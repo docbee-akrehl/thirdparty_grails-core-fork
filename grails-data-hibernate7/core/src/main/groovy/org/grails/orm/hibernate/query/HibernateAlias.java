@@ -33,4 +33,19 @@ public record HibernateAlias(String path, String alias, JoinType joinType)
     public HibernateAlias(String path, String alias) {
         this(path, alias, JoinType.INNER);
     }
+
+    /**
+     * Converts a Hibernate 5 criteria join type constant to a JPA join type.
+     *
+     * @param joinType {@code 1} for a left outer join, {@code 2} for a right outer join, anything else for an
+     *     inner join
+     * @return the JPA join type
+     */
+    public static JoinType toJoinType(int joinType) {
+        return switch (joinType) {
+            case 1 -> JoinType.LEFT;
+            case 2 -> JoinType.RIGHT;
+            default -> JoinType.INNER;
+        };
+    }
 }

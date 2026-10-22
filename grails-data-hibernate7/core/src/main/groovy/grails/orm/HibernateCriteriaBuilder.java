@@ -184,29 +184,47 @@ public class HibernateCriteriaBuilder extends GroovyObjectSupport implements Bui
         }
     }
 
+    /**
+     * Joins an association with an inner join and makes it available under the given alias, as Hibernate 5's
+     * {@code Criteria.createAlias} did. The alias is joined even if no restriction, projection or order refers
+     * to it, so an inner join restricts the results to the rows having the association.
+     *
+     * @param associationPath the association to join
+     * @param alias the alias under which the joined association can be referenced, for example {@code alias.name}
+     * @return this criteria
+     */
     public org.grails.datastore.mapping.query.api.Criteria createAlias(String associationPath, String alias) {
-        var prop = hibernateQuery.getEntity().getPropertyByName(associationPath);
-        if (prop instanceof org.grails.datastore.mapping.model.types.Basic) {
-            hibernateQuery.addAlias(
-                    new org.grails.orm.hibernate.query.HibernateAlias(associationPath, alias, JoinType.INNER));
-            return this;
-        }
-        hibernateQuery.getDetachedCriteria().createAlias(associationPath, alias);
-        hibernateQuery.getDetachedCriteria().join(associationPath, JoinType.INNER);
-        return this;
+        return createAlias(associationPath, alias, JoinType.INNER);
     }
 
+    /**
+     * Joins an association with the given join type and makes it available under the given alias.
+     *
+     * @param associationPath the association to join
+     * @param alias the alias under which the joined association can be referenced
+     * @param joinType the join type as a Hibernate 5 criteria constant: {@code 0} inner, {@code 1} left outer,
+     *     {@code 2} right outer join
+     * @return this criteria
+     * @see #createAlias(String, String, JoinType)
+     */
     public org.grails.datastore.mapping.query.api.Criteria createAlias(
             String associationPath, String alias, int joinType) {
-        var prop = hibernateQuery.getEntity().getPropertyByName(associationPath);
-        JoinType convertedJoinType = convertFromInt(joinType);
-        if (prop instanceof org.grails.datastore.mapping.model.types.Basic) {
-            hibernateQuery.addAlias(
-                    new org.grails.orm.hibernate.query.HibernateAlias(associationPath, alias, convertedJoinType));
-            return this;
-        }
-        hibernateQuery.getDetachedCriteria().createAlias(associationPath, alias);
-        hibernateQuery.getDetachedCriteria().join(associationPath, convertedJoinType);
+        return createAlias(associationPath, alias, convertFromInt(joinType));
+    }
+
+    /**
+     * Joins an association with the given join type and makes it available under the given alias. The join
+     * keeps its type when properties are referenced through the alias, so a left join keeps the rows without
+     * the association, and the alias is joined even if nothing refers to it.
+     *
+     * @param associationPath the association to join
+     * @param alias the alias under which the joined association can be referenced
+     * @param joinType the join type
+     * @return this criteria
+     */
+    public org.grails.datastore.mapping.query.api.Criteria createAlias(
+            String associationPath, String alias, JoinType joinType) {
+        hibernateQuery.addAlias(new org.grails.orm.hibernate.query.HibernateAlias(associationPath, alias, joinType));
         return this;
     }
 
@@ -1234,11 +1252,7 @@ public class HibernateCriteriaBuilder extends GroovyObjectSupport implements Bui
     }
 
     public JoinType convertFromInt(Integer from) {
-        return switch (from) {
-            case 1 -> JoinType.LEFT;
-            case 2 -> JoinType.RIGHT;
-            default -> JoinType.INNER;
-        };
+        return org.grails.orm.hibernate.query.HibernateAlias.toJoinType(from);
     }
 
     @SuppressWarnings("rawtypes")

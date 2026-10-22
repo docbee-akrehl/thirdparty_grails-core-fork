@@ -112,14 +112,26 @@ public class ExpressionResolver {
         if (aliasRegistry.isDefined(alias)) {
             HibernateAlias def = aliasRegistry.getDefinition(alias);
             if (def != null && def.path() != null) {
-                aliased = joinTracker.getRoot().join(def.path(), def.joinType());
-                aliasRegistry.realize(alias, aliased);
-                joinTracker.addJoin(alias, (From<?, ?>) aliased);
-                return subPath != null ? getPath((From<?, ?>) aliased, subPath) : aliased;
+                From<?, ?> join = joinTracker.getRoot().join(def.path(), def.joinType());
+                aliasRegistry.realize(alias, join);
+                joinTracker.addJoin(alias, join);
+                registerAssociationPath(def.path(), join);
+                return subPath != null ? getPath(join, subPath) : join;
             }
         }
 
         return null;
+    }
+
+    /**
+     * Makes the join of an alias also the join of its association path, so the association referenced by its
+     * property name, for example {@code customer.name} next to {@code createAlias('customer', 'c')}, reuses the
+     * alias' join instead of joining the association a second time, as Hibernate 5's criteria did.
+     */
+    private void registerAssociationPath(String path, From<?, ?> join) {
+        if (joinTracker.getLocalJoin(path) == null) {
+            joinTracker.addJoin(path, join);
+        }
     }
 
     private Path<?> getPath(From<?, ?> from, String path) {

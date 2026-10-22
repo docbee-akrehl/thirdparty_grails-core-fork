@@ -102,19 +102,11 @@ public class JpaCriteriaQueryCreator<T> {
         Class<?> javaClass = entity.getJavaClass();
         Root<?> root = cq.from(javaClass);
         
-        List<HibernateAlias> aliases = new ArrayList<>();
-        if (hibernateQuery != null) {
-            aliases.addAll(hibernateQuery.getAliases());
-        }
-        for (Query.Criterion criterion : detachedCriteria.getCriteria()) {
-            if (criterion instanceof HibernateAlias ha) {
-                aliases.add(ha);
-            }
-        }
-
+        List<HibernateAlias> aliases = collectAliases();
         context = JpaQueryContext.forSubquery(parentContext, aliases, root);
         registerDetachedJoins(context);
         discoverAliases(detachedCriteria.getCriteria(), context);
+        joinAliases(aliases, context);
 
         applyEagerFetchJoins(root, projectionList);
 
@@ -164,6 +156,24 @@ public class JpaCriteriaQueryCreator<T> {
         Class<?> javaClass = entity.getJavaClass();
         Root<?> root = subquery.from(javaClass);
         
+        List<HibernateAlias> aliases = collectAliases();
+        context = JpaQueryContext.forSubquery(parentContext, aliases, root);
+        registerDetachedJoins(context);
+        discoverAliases(detachedCriteria.getCriteria(), context);
+        joinAliases(aliases, context);
+
+        new JpaProjectionAdapter(criteriaBuilder, context).adapt(projections, (AbstractQuery<?>) subquery);
+
+        assignGroupBy(subquery, context);
+
+        assignCriteria(subquery, root, context, entity);
+    }
+
+    /**
+     * Returns the aliases created with {@code createAlias} for the query: those of the {@link HibernateQuery}
+     * and those added to the detached criteria.
+     */
+    private List<HibernateAlias> collectAliases() {
         List<HibernateAlias> aliases = new ArrayList<>();
         if (hibernateQuery != null) {
             aliases.addAll(hibernateQuery.getAliases());
@@ -173,16 +183,19 @@ public class JpaCriteriaQueryCreator<T> {
                 aliases.add(ha);
             }
         }
+        return aliases;
+    }
 
-        context = JpaQueryContext.forSubquery(parentContext, aliases, root);
-        registerDetachedJoins(context);
-        discoverAliases(detachedCriteria.getCriteria(), context);
-
-        new JpaProjectionAdapter(criteriaBuilder, context).adapt(projections, (AbstractQuery<?>) subquery);
-
-        assignGroupBy(subquery, context);
-
-        assignCriteria(subquery, root, context, entity);
+    /**
+     * Joins every alias created with {@code createAlias}, as Hibernate 5's criteria did, whether or not a
+     * restriction, projection or order refers to it: an inner join restricts the results to the rows having
+     * the association, and a join of a collection repeats the row for each element. Joining them before the
+     * criteria are translated also gives each alias the join type it was created with.
+     */
+    private void joinAliases(List<HibernateAlias> aliases, JpaQueryContext context) {
+        for (HibernateAlias alias : aliases) {
+            context.getFullyQualifiedExpression(alias.alias());
+        }
     }
 
     private List<Query.Projection> collectProjections() {

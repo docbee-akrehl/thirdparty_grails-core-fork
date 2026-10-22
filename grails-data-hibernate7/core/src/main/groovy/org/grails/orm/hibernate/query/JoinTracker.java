@@ -52,6 +52,16 @@ public class JoinTracker {
         return join;
     }
 
+    /**
+     * Returns the join registered for the path in this context only, without looking at the enclosing query.
+     *
+     * @param path the path or alias of the join
+     * @return the join, or {@code null} if none is registered in this context
+     */
+    public From<?, ?> getLocalJoin(String path) {
+        return joinsByPath.get(path);
+    }
+
     public From<?, ?> getRoot() {
         return root;
     }
