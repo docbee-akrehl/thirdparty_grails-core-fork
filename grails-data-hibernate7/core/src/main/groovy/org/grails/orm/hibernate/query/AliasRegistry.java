@@ -90,6 +90,16 @@ public class AliasRegistry {
         return null;
     }
 
+    /**
+     * Returns the expression an alias was realized as in this query, without looking at the enclosing query.
+     *
+     * @param alias the alias
+     * @return the expression, or {@code null} if the alias was not realized in this query
+     */
+    public Expression<?> getLocalRealized(String alias) {
+        return realizedExpressions.get(alias);
+    }
+
     public Expression<?> getRealized(String alias) {
         Expression<?> expr = realizedExpressions.get(alias);
         if (expr == null && parent != null) {

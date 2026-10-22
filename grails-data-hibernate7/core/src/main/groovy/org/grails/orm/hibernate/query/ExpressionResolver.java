@@ -52,6 +52,11 @@ public class ExpressionResolver {
             cleanPath = cleanPath.substring(5);
         }
 
+        // 0. An alias defined in this query shadows an alias of the same name of an enclosing query
+        if (aliasRegistry.getLocalDefinition(cleanPath) != null) {
+            return resolveFromAlias(cleanPath, null);
+        }
+
         // 1. Check for materialized aliases (Materialized Selects/Joins)
         if (aliasRegistry.hasRealized(cleanPath)) {
             return aliasRegistry.getRealized(cleanPath);
@@ -96,6 +101,19 @@ public class ExpressionResolver {
     }
 
     private Expression<?> resolveFromAlias(String alias, String subPath) {
+        // 0. An alias defined in this query is joined in this query, even if an enclosing query has an alias or
+        //    a join of the same name: a subquery is only correlated through aliases it does not define itself
+        HibernateAlias localDefinition = aliasRegistry.getLocalDefinition(alias);
+        if (localDefinition != null && localDefinition.path() != null && aliasRegistry.getLocalRealized(alias) == null) {
+            From<?, ?> join = joinTracker.getLocalJoin(alias);
+            if (join != null) {
+                aliasRegistry.realize(alias, join);
+            } else {
+                join = joinAlias(alias, localDefinition);
+            }
+            return subPath != null ? getPath(join, subPath) : join;
+        }
+
         // 1. Check if already realized in THIS or PARENT registry
         Expression<?> aliased = aliasRegistry.getRealized(alias);
         if (aliased != null) {
