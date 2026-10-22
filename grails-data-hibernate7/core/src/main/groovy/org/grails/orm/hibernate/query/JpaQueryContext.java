@@ -147,6 +147,23 @@ public class JpaQueryContext implements Cloneable {
         }
     }
 
+    /**
+     * Returns whether a dotted property path such as {@code category.name} needs the implicit alias of the
+     * association it starts with to be registered in this query: the alias is neither known in this query nor an
+     * alias created with {@code createAlias} in an enclosing query. An implicit alias of an enclosing query is not
+     * shared with a subquery, so {@code category.name} in a subquery refers to the subquery's own root, as in
+     * Hibernate 5's criteria; only an explicit alias of an enclosing query correlates the subquery with it.
+     *
+     * @param alias the association name the path starts with
+     * @return {@code true} if the implicit alias must be registered in this query
+     */
+    public boolean needsImplicitAlias(String alias) {
+        if (aliasRegistry.getLocalDefinition(alias) != null || aliasRegistry.getLocalRealized(alias) != null) {
+            return false;
+        }
+        return !hasAlias(alias) || aliasRegistry.isImplicit(alias);
+    }
+
     public boolean hasAlias(String alias) {
         return aliasRegistry.isDefined(alias) || aliasRegistry.hasRealized(alias) || (parent != null && parent.hasAlias(alias));
     }

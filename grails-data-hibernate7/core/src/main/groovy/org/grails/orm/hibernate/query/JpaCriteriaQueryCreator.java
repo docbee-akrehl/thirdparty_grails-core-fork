@@ -310,8 +310,9 @@ public class JpaCriteriaQueryCreator<T> {
                 String propertyName = pnc.getProperty();
                 if (propertyName.contains(".")) {
                     String alias = propertyName.substring(0, propertyName.indexOf("."));
-                    // Only register if not already known in this or parent context
-                    if (!context.hasAlias(alias)) {
+                    // Only register if not already known in this context or as an explicit alias of an enclosing
+                    // query: the implicit alias of an enclosing query is not shared with a subquery
+                    if (context.needsImplicitAlias(alias)) {
                         context.registerImplicitAlias(alias);
                     }
                 }

@@ -116,4 +116,31 @@ class SubqueryAliasScopingSpec extends HibernateGormDatastoreSpec {
         then:
         results*.code.sort() == ['T1', 'T2', 'T4']
     }
+
+    void "an implicit association path of a subquery is not correlated with the implicit alias of the enclosing query"() {
+        given: 'an uncorrelated subquery that finds T2 through the implicit alias of its own customer'
+        DetachedCriteria<AliasTicket> ticketsOfC2 = new DetachedCriteria<>(AliasTicket).build {
+            eq('customer.name', 'C2')
+        }
+
+        when: 'the enclosing query restricts the same association path without an alias'
+        List<AliasTicket> results = AliasTicket.createCriteria().list {
+            eq('customer.name', 'C1')
+            exists(ticketsOfC2)
+        }
+
+        then: 'the subquery matches for every row, its customer.name refers to its own root'
+        results*.code == ['T1']
+
+        when: 'the subquery is one branch of a disjunction'
+        List<AliasTicket> either = AliasTicket.createCriteria().list {
+            or {
+                eq('customer.name', 'C1')
+                exists(ticketsOfC2)
+            }
+        }
+
+        then: 'every ticket with a customer (the implicit alias of the enclosing query is an inner join)'
+        either*.code.sort() == ['T1', 'T2', 'T4']
+    }
 }
