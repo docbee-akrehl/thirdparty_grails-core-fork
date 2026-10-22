@@ -27,6 +27,7 @@ import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Nulls;
 import jakarta.persistence.criteria.ParameterExpression;
 import jakarta.persistence.criteria.Root;
 
@@ -270,14 +271,12 @@ public class JpaCriteriaQueryCreator<T> {
                         var propertyName = order.getProperty();
                         Expression<?> expression = context.getFullyQualifiedExpression(propertyName);
                         if (order.isIgnoreCase() && expression.getJavaType().equals(String.class)) {
-                            return order.getDirection().equals(Query.Order.Direction.ASC) ?
-                                    criteriaBuilder.asc(criteriaBuilder.lower((Expression<String>) expression)) :
-                                    criteriaBuilder.desc(criteriaBuilder.lower((Expression<String>) expression));
-                        } else {
-                            return order.getDirection().equals(Query.Order.Direction.ASC) ?
-                                    criteriaBuilder.asc(expression) :
-                                    criteriaBuilder.desc(expression);
+                            expression = criteriaBuilder.lower((Expression<String>) expression);
                         }
+                        Nulls nulls = order instanceof HibernateOrder hibernateOrder ? hibernateOrder.getNullPrecedence() : Nulls.NONE;
+                        return order.getDirection().equals(Query.Order.Direction.ASC) ?
+                                criteriaBuilder.asc(expression, nulls) :
+                                criteriaBuilder.desc(expression, nulls);
                     })
                     .toArray(jakarta.persistence.criteria.Order[]::new);
             cq.orderBy(jpaOrders);

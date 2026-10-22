@@ -19,6 +19,7 @@
 package org.grails.orm.hibernate.query;
 
 import java.util.List;
+import java.util.Map;
 
 import groovy.lang.Closure;
 
@@ -30,8 +31,8 @@ import org.grails.datastore.mapping.query.Query;
 import org.grails.datastore.mapping.query.api.Criteria;
 
 /**
- * Groovy extension methods that add {@code sqlRestriction} and {@code createAlias} with a join type to detached
- * criteria, registered in
+ * Groovy extension methods that add {@code sqlRestriction}, {@code createAlias} with a join type and with-clause
+ * and {@code order} with a null precedence to detached criteria, registered in
  * {@code META-INF/services/org.codehaus.groovy.runtime.ExtensionModule}. The {@code and}, {@code or} and {@code not}
  * blocks of a criteria query, and the association blocks inside them, resolve their calls against a detached
  * criteria, so a {@code sqlRestriction} in such a block restricts the criteria it is called in. The same methods
@@ -168,5 +169,33 @@ public final class HibernateDetachedCriteriaExtension {
     public static Criteria createAlias(AbstractDetachedCriteria<?> self, String associationPath, String alias,
             int joinType, Closure<?> withClause) {
         return createAlias(self, associationPath, alias, HibernateAlias.toJoinType(joinType), withClause);
+    }
+
+    /**
+     * Orders ascending by the given property, with the named arguments of {@link HibernateOrder#of}:
+     * {@code nulls} ({@code 'first'} or {@code 'last'}) and {@code ignoreCase}.
+     *
+     * @param self the detached criteria
+     * @param arguments the named arguments
+     * @param propertyName the property to order by
+     * @return the detached criteria
+     */
+    public static Criteria order(AbstractDetachedCriteria<?> self, Map<String, Object> arguments, String propertyName) {
+        return order(self, arguments, propertyName, null);
+    }
+
+    /**
+     * Orders by the given property and direction, with the named arguments of {@link HibernateOrder#of}:
+     * {@code nulls} ({@code 'first'} or {@code 'last'}) and {@code ignoreCase}.
+     *
+     * @param self the detached criteria
+     * @param arguments the named arguments
+     * @param propertyName the property to order by
+     * @param direction {@code "asc"} or {@code "desc"}
+     * @return the detached criteria
+     */
+    public static Criteria order(AbstractDetachedCriteria<?> self, Map<String, Object> arguments, String propertyName,
+            String direction) {
+        return self.order(HibernateOrder.of(arguments, propertyName, direction));
     }
 }

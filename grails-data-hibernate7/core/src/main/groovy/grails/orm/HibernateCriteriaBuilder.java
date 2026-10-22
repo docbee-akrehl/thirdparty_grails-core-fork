@@ -1125,6 +1125,43 @@ public class HibernateCriteriaBuilder extends GroovyObjectSupport implements Bui
         return this;
     }
 
+    /**
+     * Orders ascending by the specified property, with named arguments: {@code nulls} places the {@code null}
+     * values {@code 'first'} or {@code 'last'}, {@code ignoreCase} orders a string property ignoring the case.
+     *
+     * <pre>
+     * order('c.name', nulls: 'last')
+     * </pre>
+     *
+     * @param arguments the named arguments
+     * @param propertyName the property name to order by, which may be an alias path such as {@code c.name}
+     * @return this criteria
+     * @see org.grails.orm.hibernate.query.HibernateOrder
+     */
+    public Criteria order(Map<String, Object> arguments, String propertyName) {
+        return order(arguments, propertyName, null);
+    }
+
+    /**
+     * Orders by the specified property and direction, with named arguments: {@code nulls} places the
+     * {@code null} values {@code 'first'} or {@code 'last'}, {@code ignoreCase} orders a string property
+     * ignoring the case.
+     *
+     * <pre>
+     * order('c.name', 'desc', nulls: 'first')
+     * </pre>
+     *
+     * @param arguments the named arguments
+     * @param propertyName the property name to order by, which may be an alias path such as {@code c.name}
+     * @param directionString either "asc" for ascending or "desc" for descending
+     * @return this criteria
+     * @see org.grails.orm.hibernate.query.HibernateOrder
+     */
+    public Criteria order(Map<String, Object> arguments, String propertyName, String directionString) {
+        hibernateQuery.order(org.grails.orm.hibernate.query.HibernateOrder.of(arguments, propertyName, directionString));
+        return this;
+    }
+
     public Criteria firstResult(int offset) {
         hibernateQuery.firstResult(offset);
         return this;
