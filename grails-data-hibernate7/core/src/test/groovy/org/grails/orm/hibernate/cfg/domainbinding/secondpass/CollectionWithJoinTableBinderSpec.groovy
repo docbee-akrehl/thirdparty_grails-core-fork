@@ -29,6 +29,7 @@ import org.grails.orm.hibernate.cfg.domainbinding.binder.SimpleValueColumnBinder
 import org.grails.orm.hibernate.cfg.domainbinding.hibernate.HibernatePersistentEntity
 import org.grails.orm.hibernate.cfg.domainbinding.hibernate.HibernateToManyProperty
 import org.hibernate.boot.spi.InFlightMetadataCollector
+import org.hibernate.mapping.Bag
 import org.hibernate.mapping.Collection
 import org.hibernate.mapping.ManyToOne
 import org.hibernate.mapping.RootClass
@@ -109,6 +110,33 @@ class CollectionWithJoinTableBinderSpec extends HibernateGormDatastoreSpec {
         1 * collectionForPropertyConfigBinder.bindCollectionForPropertyConfig(property)
     }
 
+    void "test bindCollectionWithJoinTable binds the element column of a set of entities not null"() {
+        given:
+        createPersistentEntity(CWJTBBook)
+        PersistentEntity authorEntity = createPersistentEntity(CWJTBAuthor)
+        HibernateToManyProperty property = (HibernateToManyProperty) authorEntity.getPropertyByName("books")
+        def domainBinder = getGrailsDomainBinder()
+
+        def owner = new RootClass(domainBinder.metadataBuildingContext)
+        Collection collection = collectionType.newInstance(domainBinder.metadataBuildingContext, owner)
+        collection.setCollectionTable(new Table("CWJTB_BOOKS_" + collectionType.simpleName))
+
+        property.setCollection(collection)
+        def manyToOne = new ManyToOne(domainBinder.metadataBuildingContext, collection.getCollectionTable())
+        unidirectionalOneToManyInverseValuesBinder.bind(property) >> manyToOne
+
+        when:
+        binder.bindCollectionWithJoinTable(property)
+
+        then:
+        manyToOne.columns*.nullable == [nullable]
+
+        where:
+        collectionType | nullable
+        Set            | false
+        Bag            | true
+    }
+
     void "test bindCollectionWithJoinTable with null associated entity skips column binding"() {
         given:
         def domainBinder = getGrailsDomainBinder()
@@ -120,6 +148,9 @@ class CollectionWithJoinTableBinderSpec extends HibernateGormDatastoreSpec {
 
         def property = Mock(org.grails.orm.hibernate.cfg.domainbinding.hibernate.HibernateToManyEntityProperty)
         property.getCollection() >> collection
+        property.getHibernateOwner() >> Stub(org.grails.orm.hibernate.cfg.domainbinding.hibernate.GrailsHibernatePersistentEntity) {
+            getPersistentPropertiesToBind() >> [property]
+        }
         property.getHibernateAssociatedEntity() >> null
         unidirectionalOneToManyInverseValuesBinder.bind(property) >> manyToOne
 
@@ -149,6 +180,9 @@ class CollectionWithJoinTableBinderSpec extends HibernateGormDatastoreSpec {
 
         def property = Mock(org.grails.orm.hibernate.cfg.domainbinding.hibernate.HibernateToManyEntityProperty)
         property.getCollection() >> collection
+        property.getHibernateOwner() >> Stub(org.grails.orm.hibernate.cfg.domainbinding.hibernate.GrailsHibernatePersistentEntity) {
+            getPersistentPropertiesToBind() >> [property]
+        }
         property.getHibernateAssociatedEntity() >> associatedEntity
         unidirectionalOneToManyInverseValuesBinder.bind(property) >> manyToOne
 
