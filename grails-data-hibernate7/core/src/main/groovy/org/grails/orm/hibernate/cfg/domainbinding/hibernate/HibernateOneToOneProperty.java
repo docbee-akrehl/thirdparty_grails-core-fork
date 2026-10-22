@@ -26,6 +26,7 @@ import org.hibernate.type.ForeignKeyDirection;
 
 import org.grails.datastore.mapping.model.MappingContext;
 import org.grails.datastore.mapping.model.PersistentEntity;
+import org.grails.datastore.mapping.model.types.Association;
 import org.grails.datastore.mapping.model.types.mapping.OneToOneWithMapping;
 import org.grails.orm.hibernate.cfg.PropertyConfig;
 
@@ -50,15 +51,19 @@ public class HibernateOneToOneProperty extends OneToOneWithMapping<PropertyConfi
         return (GrailsHibernatePersistentEntity) super.getAssociatedEntity();
     }
 
+    /**
+     * The inverse side. GORM pairs a single to-one with the only back-reference of its target, also when that
+     * back-reference is the many-to-one side of a {@code hasMany} of this entity, so the inverse side is not
+     * necessarily a one-to-one.
+     */
     @Override
-    public HibernateOneToOneProperty getHibernateInverseSide() {
-        return (HibernateOneToOneProperty) getInverseSide();
+    public HibernateAssociation getHibernateInverseSide() {
+        return (HibernateAssociation) getInverseSide();
     }
 
     /** True when the FK is on this side (hasOne on the other side). Maps to Hibernate constrained. */
     public boolean isHibernateConstrained() {
-        HibernateOneToOneProperty otherSide = getHibernateInverseSide();
-        return otherSide != null && otherSide.isHasOne();
+        return isInverseSideHasOne();
     }
 
     /**
@@ -66,7 +71,7 @@ public class HibernateOneToOneProperty extends OneToOneWithMapping<PropertyConfi
      * side's owner; otherwise the directly associated entity.
      */
     public String getHibernateReferencedEntityName() {
-        HibernateOneToOneProperty otherSide = getHibernateInverseSide();
+        HibernateAssociation otherSide = getHibernateInverseSide();
         return otherSide != null ?
                 otherSide.getOwner().getName() :
                 getAssociatedEntity().getName();
@@ -77,8 +82,17 @@ public class HibernateOneToOneProperty extends OneToOneWithMapping<PropertyConfi
      * meaningful when {@link #isHibernateConstrained()} is false and the other side exists.
      */
     public String getHibernateReferencedPropertyName() {
-        HibernateOneToOneProperty otherSide = getHibernateInverseSide();
+        HibernateAssociation otherSide = getHibernateInverseSide();
         return otherSide != null ? otherSide.getName() : null;
+    }
+
+    /**
+     * Whether the inverse side is a {@code hasOne}, as Hibernate 5's GORM decided it: only a one-to-one with the
+     * foreign key in the child is one; a many-to-one inverse side never is.
+     */
+    private boolean isInverseSideHasOne() {
+        Association<?> otherSide = getInverseSide();
+        return otherSide != null && otherSide.isHasOne();
     }
 
     /** FK direction: FROM_PARENT when constrained (hasOne on other side), TO_PARENT otherwise. */
@@ -116,8 +130,7 @@ public class HibernateOneToOneProperty extends OneToOneWithMapping<PropertyConfi
     @Override
     public boolean isAssociationColumnNullable() {
         if (isBidirectional() && !isOwningSide()) {
-            HibernateOneToOneProperty inverseSide = getHibernateInverseSide();
-            return inverseSide == null || !inverseSide.isHasOne();
+            return !isInverseSideHasOne();
         }
         return true;
     }
