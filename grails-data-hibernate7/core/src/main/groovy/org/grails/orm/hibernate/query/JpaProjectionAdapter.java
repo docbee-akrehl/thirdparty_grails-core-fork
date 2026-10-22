@@ -26,6 +26,7 @@ import jakarta.persistence.criteria.Subquery;
 import org.hibernate.query.criteria.HibernateCriteriaBuilder;
 
 import org.grails.datastore.mapping.query.Query;
+import org.grails.orm.hibernate.cfg.domainbinding.hibernate.GrailsHibernatePersistentEntity;
 
 /**
  * Adapts Grails datastore projections to JPA Selections.
@@ -39,7 +40,7 @@ public class JpaProjectionAdapter {
     private final JpaProjectionTranslator translator;
 
     public JpaProjectionAdapter(HibernateCriteriaBuilder criteriaBuilder, JpaQueryContext context) {
-        this(criteriaBuilder, context, null);
+        this(criteriaBuilder, context, null, null);
     }
 
     /**
@@ -51,9 +52,29 @@ public class JpaProjectionAdapter {
      *     not supported
      */
     public JpaProjectionAdapter(HibernateCriteriaBuilder criteriaBuilder, JpaQueryContext context, CriteriaHandlerContext handlerContext) {
+        this(criteriaBuilder, context, null, handlerContext);
+    }
+
+    /**
+     * @param entity the queried entity, whose table alias replaces {@code {alias}} in a SQL projection
+     */
+    public JpaProjectionAdapter(
+            HibernateCriteriaBuilder criteriaBuilder, JpaQueryContext context, GrailsHibernatePersistentEntity entity) {
+        this(criteriaBuilder, context, entity, null);
+    }
+
+    /**
+     * @param criteriaBuilder the criteria builder
+     * @param context the query context
+     * @param entity the queried entity, whose table alias replaces {@code {alias}} in a SQL projection
+     * @param handlerContext the context handed to projection handlers, or {@code null} if custom projections are
+     *     not supported
+     */
+    public JpaProjectionAdapter(HibernateCriteriaBuilder criteriaBuilder, JpaQueryContext context,
+            GrailsHibernatePersistentEntity entity, CriteriaHandlerContext handlerContext) {
         this.criteriaBuilder = criteriaBuilder;
         this.context = context;
-        this.translator = new JpaProjectionTranslator(criteriaBuilder, context, handlerContext);
+        this.translator = new JpaProjectionTranslator(criteriaBuilder, context, entity, handlerContext);
     }
 
     public void adapt(Query.ProjectionList projectionList, jakarta.persistence.criteria.AbstractQuery<?> query) {
