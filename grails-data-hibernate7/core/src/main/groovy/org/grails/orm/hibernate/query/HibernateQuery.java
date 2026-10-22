@@ -18,9 +18,11 @@
  */
 package org.grails.orm.hibernate.query;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -479,8 +481,42 @@ public class HibernateQuery extends Query {
     }
 
     public List list(Session session) {
+        if (isDistinctRootEntity()) {
+            var creator = createJpaCriteriaQueryCreator(new Query.ProjectionList());
+            List results = getHibernateQueryExecutor().list(session, creator.createQuery(), creator.getParameterValues());
+            return distinctRootEntities(results);
+        }
         var creator = createJpaCriteriaQueryCreator();
         return getHibernateQueryExecutor().list(session, creator.createQuery(), creator.getParameterValues());
+    }
+
+    /**
+     * Returns whether the query selects its distinct root entities, as {@code listDistinct}, {@link #distinct()}
+     * and a {@code distinct()} projection without a property do. Like Hibernate 5's {@code DISTINCT_ROOT_ENTITY},
+     * such a query is not executed as SQL {@code DISTINCT}, which would forbid an order by a column of a joined
+     * alias; the duplicates the joins produce are removed from the results instead.
+     */
+    private boolean isDistinctRootEntity() {
+        List<Query.Projection> projectionList = projections.getProjectionList();
+        return !projectionList.isEmpty() && projectionList.stream().allMatch(p -> p instanceof Query.DistinctProjection);
+    }
+
+    /**
+     * Removes the repeated root entities from the results, keeping the position of the first occurrence of each,
+     * as Hibernate 5's {@code DISTINCT_ROOT_ENTITY} did. The entities of one session are unique instances, so they
+     * are compared by identity. A maximum number of results and an offset apply to the SQL rows, so fewer results
+     * than the maximum may remain, as in Hibernate 5.
+     */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static List distinctRootEntities(List results) {
+        Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        List distinct = new ArrayList(results.size());
+        for (Object result : results) {
+            if (seen.add(result)) {
+                distinct.add(result);
+            }
+        }
+        return distinct;
     }
 
     private HibernateQueryExecutor getHibernateQueryExecutor() {
@@ -489,9 +525,13 @@ public class HibernateQuery extends Query {
     }
 
     private JpaCriteriaQueryCreator<?> createJpaCriteriaQueryCreator() {
+        return createJpaCriteriaQueryCreator(projections);
+    }
+
+    private JpaCriteriaQueryCreator<?> createJpaCriteriaQueryCreator(Query.ProjectionList projectionList) {
         ConversionService conversionService = getSession().getMappingContext().getConversionService();
         return new JpaCriteriaQueryCreator<>(
-                projections, getCriteriaBuilder(), (GrailsHibernatePersistentEntity) entity, detachedCriteria, conversionService, this);
+                projectionList, getCriteriaBuilder(), (GrailsHibernatePersistentEntity) entity, detachedCriteria, conversionService, this);
     }
 
     public void setFetchSize(Integer fetchSize) {
