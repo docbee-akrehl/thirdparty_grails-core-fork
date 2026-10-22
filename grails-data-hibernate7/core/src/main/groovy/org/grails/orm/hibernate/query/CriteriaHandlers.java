@@ -18,10 +18,12 @@
  */
 package org.grails.orm.hibernate.query;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.grails.datastore.mapping.query.Query;
 
@@ -44,7 +46,9 @@ import org.grails.datastore.mapping.query.Query;
  * }
  * </pre>
  *
- * <p>Handlers can also be contributed through the {@link CriteriaHandlerProvider} {@link ServiceLoader} SPI.
+ * <p>Handlers can also be contributed through the {@link CriteriaHandlerProvider} {@link ServiceLoader} SPI. The
+ * providers are loaded once, on the first query, from the thread context class loader and the class loader of the
+ * GORM classes; a thread that runs its first query while another thread is loading them waits for them.
  * Criterion handlers share the registry of {@link PredicateGenerator#registerCriterionHandler}, so a handler
  * registered there without context keeps working.
  *
@@ -55,7 +59,8 @@ public final class CriteriaHandlers {
     private static final Map<Class<? extends Query.Order>, OrderHandler<?>> ORDER_HANDLERS = new ConcurrentHashMap<>();
     private static final Map<Class<? extends Query.Projection>, ProjectionHandler<?>> PROJECTION_HANDLERS =
             new ConcurrentHashMap<>();
-    private static final AtomicBoolean SERVICE_LOADERS_INITIALIZED = new AtomicBoolean(false);
+    private static final Object SERVICE_LOADERS_LOCK = new Object();
+    private static volatile boolean serviceLoadersInitialized;
 
     private CriteriaHandlers() {
     }
@@ -129,17 +134,51 @@ public final class CriteriaHandlers {
     }
 
     static void resetServiceProviders() {
-        SERVICE_LOADERS_INITIALIZED.set(false);
+        synchronized (SERVICE_LOADERS_LOCK) {
+            serviceLoadersInitialized = false;
+        }
     }
 
+    /**
+     * Registers the handlers of the {@link CriteriaHandlerProvider} services, once. The providers are marked as
+     * loaded only after all of them were registered, so a concurrent first query waits for them instead of missing
+     * their handlers; if loading fails, the next query tries again.
+     */
     static void loadServiceProviders() {
-        if (SERVICE_LOADERS_INITIALIZED.compareAndSet(false, true)) {
-            ServiceLoader.load(CriteriaHandlerProvider.class, Thread.currentThread().getContextClassLoader())
-                    .forEach(provider -> {
-                        provider.criterionHandlers().forEach(PredicateGenerator.CUSTOM_HANDLERS::putIfAbsent);
-                        provider.orderHandlers().forEach(ORDER_HANDLERS::putIfAbsent);
-                        provider.projectionHandlers().forEach(PROJECTION_HANDLERS::putIfAbsent);
-                    });
+        if (serviceLoadersInitialized) {
+            return;
         }
+        synchronized (SERVICE_LOADERS_LOCK) {
+            if (serviceLoadersInitialized) {
+                return;
+            }
+            for (CriteriaHandlerProvider provider : loadServices(CriteriaHandlerProvider.class)) {
+                provider.criterionHandlers().forEach(PredicateGenerator.CUSTOM_HANDLERS::putIfAbsent);
+                provider.orderHandlers().forEach(ORDER_HANDLERS::putIfAbsent);
+                provider.projectionHandlers().forEach(PROJECTION_HANDLERS::putIfAbsent);
+            }
+            serviceLoadersInitialized = true;
+        }
+    }
+
+    /**
+     * Returns the implementations of a service found by the thread context class loader and by the class loader
+     * of the GORM classes, each implementation class once.
+     *
+     * @param service the service type
+     * @param <S> the service type
+     * @return the service implementations, those of the thread context class loader first
+     */
+    static <S> List<S> loadServices(Class<S> service) {
+        Map<Class<?>, S> providers = new LinkedHashMap<>();
+        ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
+        ClassLoader gormClassLoader = CriteriaHandlers.class.getClassLoader();
+        if (contextClassLoader != null) {
+            ServiceLoader.load(service, contextClassLoader).forEach(provider -> providers.putIfAbsent(provider.getClass(), provider));
+        }
+        if (gormClassLoader != contextClassLoader) {
+            ServiceLoader.load(service, gormClassLoader).forEach(provider -> providers.putIfAbsent(provider.getClass(), provider));
+        }
+        return new ArrayList<>(providers.values());
     }
 }

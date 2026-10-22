@@ -25,9 +25,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.ServiceLoader;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import jakarta.persistence.criteria.AbstractQuery;
@@ -108,7 +106,7 @@ public class PredicateGenerator {
     }
 
     /**
-     * SPI for contributing a {@link CriterionHandler} via {@link ServiceLoader}.
+     * SPI for contributing a {@link CriterionHandler} via {@link java.util.ServiceLoader}.
      *
      * <p>Create an implementation and register it in
      * {@code META-INF/services/org.grails.orm.hibernate.query.PredicateGenerator$CriterionHandlerProvider}
@@ -134,13 +132,24 @@ public class PredicateGenerator {
     public static final Map<Class<? extends Query.Criterion>, CriterionHandler> CUSTOM_HANDLERS =
         new ConcurrentHashMap<>();
 
-    private static final AtomicBoolean SERVICE_LOADERS_INITIALIZED = new AtomicBoolean(false);
+    private static final Object SERVICE_LOADERS_LOCK = new Object();
+    private static volatile boolean serviceLoadersInitialized;
 
+    /**
+     * Registers the handlers of the {@link CriterionHandlerProvider} and {@link CriteriaHandlerProvider} services,
+     * once. The providers are marked as loaded only after their handlers were registered, so a concurrent first
+     * query waits for them instead of falling through to the built-in handling.
+     */
     private static void loadServiceProviders() {
-        if (SERVICE_LOADERS_INITIALIZED.compareAndSet(false, true)) {
-            ServiceLoader.load(CriterionHandlerProvider.class,
-                    Thread.currentThread().getContextClassLoader())
-                .forEach(p -> CUSTOM_HANDLERS.putIfAbsent(p.criterionType(), p.criterionHandler()));
+        if (!serviceLoadersInitialized) {
+            synchronized (SERVICE_LOADERS_LOCK) {
+                if (!serviceLoadersInitialized) {
+                    for (CriterionHandlerProvider provider : CriteriaHandlers.loadServices(CriterionHandlerProvider.class)) {
+                        CUSTOM_HANDLERS.putIfAbsent(provider.criterionType(), provider.criterionHandler());
+                    }
+                    serviceLoadersInitialized = true;
+                }
+            }
         }
         CriteriaHandlers.loadServiceProviders();
     }
@@ -148,7 +157,7 @@ public class PredicateGenerator {
     /**
      * Registers a {@link CriterionHandler} for the given criterion type. The handler is called
      * before any built-in criterion logic when a criterion of exactly that type is encountered.
-     * Programmatic registration takes precedence over {@link ServiceLoader}-discovered handlers.
+     * Programmatic registration takes precedence over {@link java.util.ServiceLoader}-discovered handlers.
      *
      * @param type    the exact criterion class to handle
      * @param handler the handler that converts the criterion to a JPA {@link Predicate}
@@ -163,7 +172,9 @@ public class PredicateGenerator {
      */
     public static void clearCustomCriterionHandlers() {
         CUSTOM_HANDLERS.clear();
-        SERVICE_LOADERS_INITIALIZED.set(false);
+        synchronized (SERVICE_LOADERS_LOCK) {
+            serviceLoadersInitialized = false;
+        }
         CriteriaHandlers.resetServiceProviders();
     }
 
