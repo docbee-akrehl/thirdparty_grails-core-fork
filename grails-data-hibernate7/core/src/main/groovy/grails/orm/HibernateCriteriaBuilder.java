@@ -228,8 +228,86 @@ public class HibernateCriteriaBuilder extends GroovyObjectSupport implements Bui
      */
     public org.grails.datastore.mapping.query.api.Criteria createAlias(
             String associationPath, String alias, JoinType joinType) {
-        hibernateQuery.addAlias(new org.grails.orm.hibernate.query.HibernateAlias(associationPath, alias, joinType));
+        return createAlias(associationPath, alias, joinType, (Query.Criterion) null);
+    }
+
+    /**
+     * Joins an association with the given join type under the given alias and restricts the join with a
+     * with-clause, which becomes the join's {@code on} condition ({@code join ... on ...}), as Hibernate 5's
+     * {@code createAlias(path, alias, joinType, withClause)} did. A left join keeps the rows whose association
+     * does not match the with-clause. The with-clause refers to the joined association through the alias:
+     *
+     * <pre>
+     * createAlias('links', 'l', JoinType.LEFT, Restrictions.eq('l.name', 'L1'))
+     * </pre>
+     *
+     * @param associationPath the association to join
+     * @param alias the alias under which the joined association can be referenced
+     * @param joinType the join type
+     * @param withClause the criterion of the join's {@code on} condition, or {@code null} for none
+     * @return this criteria
+     */
+    public org.grails.datastore.mapping.query.api.Criteria createAlias(
+            String associationPath, String alias, JoinType joinType, Query.Criterion withClause) {
+        hibernateQuery.addAlias(
+                new org.grails.orm.hibernate.query.HibernateAlias(associationPath, alias, joinType, withClause));
         return this;
+    }
+
+    /**
+     * Joins an association under the given alias, restricting the join with a with-clause.
+     *
+     * @param associationPath the association to join
+     * @param alias the alias under which the joined association can be referenced
+     * @param joinType the join type as a Hibernate 5 criteria constant: {@code 0} inner, {@code 1} left outer,
+     *     {@code 2} right outer join
+     * @param withClause the criterion of the join's {@code on} condition, or {@code null} for none
+     * @return this criteria
+     * @see #createAlias(String, String, JoinType, Query.Criterion)
+     */
+    public org.grails.datastore.mapping.query.api.Criteria createAlias(
+            String associationPath, String alias, int joinType, Query.Criterion withClause) {
+        return createAlias(associationPath, alias, convertFromInt(joinType), withClause);
+    }
+
+    /**
+     * Joins an association under the given alias, restricting the join with the criteria of the closure as its
+     * with-clause:
+     *
+     * <pre>
+     * createAlias('links', 'l', JoinType.LEFT) {
+     *     eq('l.name', 'L1')
+     * }
+     * </pre>
+     *
+     * @param associationPath the association to join
+     * @param alias the alias under which the joined association can be referenced
+     * @param joinType the join type
+     * @param withClause the criteria of the join's {@code on} condition
+     * @return this criteria
+     * @see #createAlias(String, String, JoinType, Query.Criterion)
+     */
+    public org.grails.datastore.mapping.query.api.Criteria createAlias(
+            String associationPath, String alias, JoinType joinType, Closure<?> withClause) {
+        DetachedCriteria<?> criteria = new DetachedCriteria<>(targetClass).build(withClause);
+        return createAlias(associationPath, alias, joinType, new Query.Conjunction(criteria.getCriteria()));
+    }
+
+    /**
+     * Joins an association under the given alias, restricting the join with the criteria of the closure as its
+     * with-clause.
+     *
+     * @param associationPath the association to join
+     * @param alias the alias under which the joined association can be referenced
+     * @param joinType the join type as a Hibernate 5 criteria constant: {@code 0} inner, {@code 1} left outer,
+     *     {@code 2} right outer join
+     * @param withClause the criteria of the join's {@code on} condition
+     * @return this criteria
+     * @see #createAlias(String, String, JoinType, Closure)
+     */
+    public org.grails.datastore.mapping.query.api.Criteria createAlias(
+            String associationPath, String alias, int joinType, Closure<?> withClause) {
+        return createAlias(associationPath, alias, convertFromInt(joinType), withClause);
     }
 
     /**

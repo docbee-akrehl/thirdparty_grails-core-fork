@@ -25,6 +25,7 @@ import jakarta.persistence.criteria.AbstractQuery;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.ParameterExpression;
 import jakarta.persistence.criteria.Root;
@@ -106,7 +107,7 @@ public class JpaCriteriaQueryCreator<T> {
         context = JpaQueryContext.forSubquery(parentContext, aliases, root);
         registerDetachedJoins(context);
         discoverAliases(detachedCriteria.getCriteria(), context);
-        joinAliases(aliases, context);
+        joinAliases(aliases, context, cq, root);
 
         applyEagerFetchJoins(root, projectionList);
 
@@ -160,7 +161,7 @@ public class JpaCriteriaQueryCreator<T> {
         context = JpaQueryContext.forSubquery(parentContext, aliases, root);
         registerDetachedJoins(context);
         discoverAliases(detachedCriteria.getCriteria(), context);
-        joinAliases(aliases, context);
+        joinAliases(aliases, context, subquery, root);
 
         new JpaProjectionAdapter(criteriaBuilder, context).adapt(projections, (AbstractQuery<?>) subquery);
 
@@ -190,11 +191,19 @@ public class JpaCriteriaQueryCreator<T> {
      * Joins every alias created with {@code createAlias}, as Hibernate 5's criteria did, whether or not a
      * restriction, projection or order refers to it: an inner join restricts the results to the rows having
      * the association, and a join of a collection repeats the row for each element. Joining them before the
-     * criteria are translated also gives each alias the join type it was created with.
+     * criteria are translated also gives each alias the join type it was created with. The with-clause of an
+     * alias becomes the {@code on} condition of its join, translated once all aliases are joined, so it can
+     * refer to any of them.
      */
-    private void joinAliases(List<HibernateAlias> aliases, JpaQueryContext context) {
+    private void joinAliases(List<HibernateAlias> aliases, JpaQueryContext context, AbstractQuery<?> query, Root<?> root) {
         for (HibernateAlias alias : aliases) {
             context.getFullyQualifiedExpression(alias.alias());
+        }
+        for (HibernateAlias alias : aliases) {
+            if (alias.withClause() != null && context.getFrom(alias.alias()) instanceof Join<?, ?> join) {
+                var predicateGenerator = new PredicateGenerator(criteriaBuilder, conversionService);
+                join.on(predicateGenerator.handleCriterion(query, root, context, entity, alias.withClause()));
+            }
         }
     }
 

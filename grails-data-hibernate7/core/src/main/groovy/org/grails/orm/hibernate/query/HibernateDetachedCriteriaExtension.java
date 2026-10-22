@@ -20,9 +20,13 @@ package org.grails.orm.hibernate.query;
 
 import java.util.List;
 
+import groovy.lang.Closure;
+
 import jakarta.persistence.criteria.JoinType;
 
+import grails.gorm.DetachedCriteria;
 import org.grails.datastore.gorm.query.criteria.AbstractDetachedCriteria;
+import org.grails.datastore.mapping.query.Query;
 import org.grails.datastore.mapping.query.api.Criteria;
 
 /**
@@ -96,7 +100,73 @@ public final class HibernateDetachedCriteriaExtension {
      * @return the detached criteria
      */
     public static Criteria createAlias(AbstractDetachedCriteria<?> self, String associationPath, String alias, JoinType joinType) {
-        self.add(new HibernateAlias(associationPath, alias, joinType));
+        return createAlias(self, associationPath, alias, joinType, (Query.Criterion) null);
+    }
+
+    /**
+     * Joins an association with the given join type under the given alias and restricts the join with a
+     * with-clause, which becomes the join's {@code on} condition, as {@code createAlias} of a criteria query does.
+     *
+     * @param self the detached criteria
+     * @param associationPath the association to join
+     * @param alias the alias under which the joined association can be referenced
+     * @param joinType the join type
+     * @param withClause the criterion of the join's {@code on} condition, or {@code null} for none
+     * @return the detached criteria
+     */
+    public static Criteria createAlias(AbstractDetachedCriteria<?> self, String associationPath, String alias,
+            JoinType joinType, Query.Criterion withClause) {
+        self.add(new HibernateAlias(associationPath, alias, joinType, withClause));
         return self;
+    }
+
+    /**
+     * Joins an association under the given alias and restricts the join with a with-clause.
+     *
+     * @param self the detached criteria
+     * @param associationPath the association to join
+     * @param alias the alias under which the joined association can be referenced
+     * @param joinType the join type as a Hibernate 5 criteria constant: {@code 0} inner, {@code 1} left outer,
+     *     {@code 2} right outer join
+     * @param withClause the criterion of the join's {@code on} condition, or {@code null} for none
+     * @return the detached criteria
+     */
+    public static Criteria createAlias(AbstractDetachedCriteria<?> self, String associationPath, String alias,
+            int joinType, Query.Criterion withClause) {
+        return createAlias(self, associationPath, alias, HibernateAlias.toJoinType(joinType), withClause);
+    }
+
+    /**
+     * Joins an association under the given alias and restricts the join with the criteria of the closure as its
+     * with-clause.
+     *
+     * @param self the detached criteria
+     * @param associationPath the association to join
+     * @param alias the alias under which the joined association can be referenced
+     * @param joinType the join type
+     * @param withClause the criteria of the join's {@code on} condition
+     * @return the detached criteria
+     */
+    public static Criteria createAlias(AbstractDetachedCriteria<?> self, String associationPath, String alias,
+            JoinType joinType, Closure<?> withClause) {
+        DetachedCriteria<?> criteria = new DetachedCriteria<>(self.getPersistentEntity().getJavaClass()).build(withClause);
+        return createAlias(self, associationPath, alias, joinType, new Query.Conjunction(criteria.getCriteria()));
+    }
+
+    /**
+     * Joins an association under the given alias and restricts the join with the criteria of the closure as its
+     * with-clause.
+     *
+     * @param self the detached criteria
+     * @param associationPath the association to join
+     * @param alias the alias under which the joined association can be referenced
+     * @param joinType the join type as a Hibernate 5 criteria constant: {@code 0} inner, {@code 1} left outer,
+     *     {@code 2} right outer join
+     * @param withClause the criteria of the join's {@code on} condition
+     * @return the detached criteria
+     */
+    public static Criteria createAlias(AbstractDetachedCriteria<?> self, String associationPath, String alias,
+            int joinType, Closure<?> withClause) {
+        return createAlias(self, associationPath, alias, HibernateAlias.toJoinType(joinType), withClause);
     }
 }
