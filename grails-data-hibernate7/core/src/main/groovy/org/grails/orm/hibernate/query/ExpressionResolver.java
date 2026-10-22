@@ -21,6 +21,9 @@ import java.util.Map;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.From;
 import jakarta.persistence.criteria.Path;
+import jakarta.persistence.metamodel.Attribute;
+import jakarta.persistence.metamodel.IdentifiableType;
+import jakarta.persistence.metamodel.SingularAttribute;
 
 /**
  * Resolves string paths and aliases into JPA Expressions and Paths.
@@ -81,7 +84,13 @@ public class ExpressionResolver {
             return resolved;
         }
 
-        // 4. Handle alias.property
+        // 4. The identifier of a to-one association named without an alias is its foreign key column
+        Path<?> foreignKey = implicitAssociationIdentifier(cleanPath);
+        if (foreignKey != null) {
+            return foreignKey;
+        }
+
+        // 5. Handle alias.property
         if (cleanPath.contains(".")) {
             int dotIdx = cleanPath.indexOf(".");
             String aliasCandidate = cleanPath.substring(0, dotIdx);
@@ -90,13 +99,13 @@ public class ExpressionResolver {
             }
         }
 
-        // 5. Check Join Tracker (Already joined paths)
+        // 6. Check Join Tracker (Already joined paths)
         From<?, ?> joined = joinTracker.getJoin(cleanPath);
         if (joined != null) {
             return joined;
         }
 
-        // 6. Fallback to Root path resolution
+        // 7. Fallback to Root path resolution
         return getPath(joinTracker.getRoot(), cleanPath);
     }
 
@@ -208,6 +217,68 @@ public class ExpressionResolver {
         if (joinTracker.getLocalJoin(path) == null) {
             joinTracker.addJoin(path, join);
         }
+    }
+
+    /**
+     * Resolves {@code association.identifier}, where the association is a to-one association of this query's
+     * root named without an alias, to the foreign key column, as Hibernate 5's criteria did: the associated table
+     * is not joined, so rows without the association are kept ({@code isNull('category.id')} finds them, and
+     * {@code or} / {@code not} work on them). The identifier may have a mapped name ({@code owner.code}), and
+     * {@code id} stands for it when the associated entity has no property named {@code id}. Any other property
+     * of the association ({@code category.name}) still joins it through its implicit alias, and an alias
+     * created with {@code createAlias} is not affected.
+     *
+     * @return the foreign key path, or {@code null} if the path is not the identifier of such an association
+     */
+    private Path<?> implicitAssociationIdentifier(String path) {
+        int dot = path.indexOf('.');
+        if (dot <= 0 || path.indexOf('.', dot + 1) >= 0) {
+            return null;
+        }
+        String association = path.substring(0, dot);
+        if (!aliasRegistry.isImplicit(association)) {
+            return null;
+        }
+        From<?, ?> root = joinTracker.getRoot();
+        if (root == null) {
+            return null;
+        }
+        return toOneIdentifier(root, association, path.substring(dot + 1));
+    }
+
+    /**
+     * Returns the path of the identifier of a to-one association of {@code from}, which Hibernate renders as the
+     * foreign key column of {@code from}'s table, or {@code null} if {@code property} is not that identifier.
+     */
+    private static Path<?> toOneIdentifier(From<?, ?> from, String association, String property) {
+        Path<?> associationPath;
+        try {
+            associationPath = from.get(association);
+        } catch (RuntimeException e) {
+            return null;
+        }
+        if (!(associationPath.getModel() instanceof SingularAttribute<?, ?> attribute) ||
+                (attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.MANY_TO_ONE &&
+                        attribute.getPersistentAttributeType() != Attribute.PersistentAttributeType.ONE_TO_ONE) ||
+                !(attribute.getType() instanceof IdentifiableType<?> target) ||
+                !target.hasSingleIdAttribute()) {
+            return null;
+        }
+        SingularAttribute<?, ?> identifier = null;
+        boolean hasIdProperty = false;
+        for (SingularAttribute<?, ?> candidate : target.getSingularAttributes()) {
+            if (candidate.isId()) {
+                identifier = candidate;
+            }
+            if ("id".equals(candidate.getName())) {
+                hasIdProperty = true;
+            }
+        }
+        if (identifier == null ||
+                !(identifier.getName().equals(property) || ("id".equals(property) && !hasIdProperty))) {
+            return null;
+        }
+        return associationPath.get(identifier.getName());
     }
 
     private Path<?> getPath(From<?, ?> from, String path) {

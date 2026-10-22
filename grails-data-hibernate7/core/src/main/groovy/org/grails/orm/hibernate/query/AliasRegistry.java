@@ -16,7 +16,9 @@
 package org.grails.orm.hibernate.query;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import jakarta.persistence.criteria.Expression;
 
@@ -28,6 +30,7 @@ import jakarta.persistence.criteria.Expression;
 public class AliasRegistry {
     private final Map<String, HibernateAlias> definitions = new HashMap<>();
     private final Map<String, Expression<?>> realizedExpressions = new HashMap<>();
+    private final Set<String> implicitAliases = new HashSet<>();
     private final AliasRegistry parent;
 
     public AliasRegistry() {
@@ -40,6 +43,31 @@ public class AliasRegistry {
 
     public void define(String alias, HibernateAlias definition) {
         definitions.put(alias, definition);
+    }
+
+    /**
+     * Defines the alias a criterion on a dotted property path such as {@code category.name} implies for the
+     * association it starts with, as opposed to an alias created with {@code createAlias}.
+     *
+     * @param alias the association name, which is the alias and its path
+     */
+    public void defineImplicit(String alias) {
+        definitions.put(alias, new HibernateAlias(alias, alias));
+        implicitAliases.add(alias);
+    }
+
+    /**
+     * Returns whether the alias is the implicit alias of an association named in a dotted property path, in this
+     * or an enclosing query, rather than one created with {@code createAlias}.
+     *
+     * @param alias the alias
+     * @return {@code true} if the nearest definition of the alias is implicit
+     */
+    public boolean isImplicit(String alias) {
+        if (definitions.containsKey(alias)) {
+            return implicitAliases.contains(alias);
+        }
+        return parent != null && parent.isImplicit(alias);
     }
 
     public void realize(String alias, Expression<?> expression) {

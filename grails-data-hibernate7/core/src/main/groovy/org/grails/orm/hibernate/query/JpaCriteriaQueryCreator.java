@@ -312,7 +312,7 @@ public class JpaCriteriaQueryCreator<T> {
                     String alias = propertyName.substring(0, propertyName.indexOf("."));
                     // Only register if not already known in this or parent context
                     if (!context.hasAlias(alias)) {
-                        context.registerAlias(alias, new HibernateAlias(alias, alias));
+                        context.registerImplicitAlias(alias);
                     }
                 }
             } else if (criterion instanceof Query.Junction junction) {

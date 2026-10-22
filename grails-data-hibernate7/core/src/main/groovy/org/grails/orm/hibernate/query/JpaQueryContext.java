@@ -128,6 +128,16 @@ public class JpaQueryContext implements Cloneable {
         aliasRegistry.define(alias, definition);
     }
 
+    /**
+     * Registers the implicit alias of the association a dotted property path such as {@code category.name}
+     * starts with. It is joined only when a property of the association other than its identifier is referenced.
+     *
+     * @param alias the association name
+     */
+    public void registerImplicitAlias(String alias) {
+        aliasRegistry.defineImplicit(alias);
+    }
+
     public void registerAliasFromPath(String path) {
         if (path != null && path.contains(grails.orm.HibernateCriteriaBuilder.ALIAS_SEPARATOR)) {
             String alias = path.split(grails.orm.HibernateCriteriaBuilder.ALIAS_SEPARATOR)[0];
