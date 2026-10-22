@@ -168,7 +168,11 @@ class HibernateGormInstanceApi<D> extends GormInstanceApi<D> {
         try {
             return performUpsert(target, shouldFlush)
         } finally {
-            validateable.skipValidation(false)
+            // An instance saved with validate: false (and not flushed by this save) keeps skipping
+            // validation, so its deferred insert/update is not rejected by the flush-time validation
+            // (https://github.com/apache/grails-core/issues/15276); the next save() resets the flag.
+            // A validated save, or a save that already flushed, validates again on the next flush.
+            validateable.skipValidation(!shouldValidate && !shouldFlush)
         }
     }
 
