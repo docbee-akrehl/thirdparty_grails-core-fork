@@ -21,6 +21,7 @@ package grails.gorm.tests.criteria
 import jakarta.persistence.criteria.JoinType
 
 import grails.gorm.DetachedCriteria
+import grails.gorm.PagedResultList
 import grails.gorm.tests.HibernateGormDatastoreSpec
 
 /**
@@ -130,6 +131,22 @@ class CreateAliasJoinTypeSpec extends HibernateGormDatastoreSpec {
                 count('id')
             }
         } == 4L
+    }
+
+    void "the total count of a paged list joins the aliases with their join type"() {
+        when:
+        PagedResultList<AliasTicket> page = AliasTicket.createCriteria().list(max: 1, offset: 0) {
+            createAlias('customer', 'c', LEFT)
+            or {
+                eq('c.name', 'C1')
+                eq('title', 'Z')
+            }
+            order('code')
+        }
+
+        then:
+        page*.code == ['T1']
+        page.totalCount == 3
     }
 
     void "a detached criteria alias keeps its join type"() {

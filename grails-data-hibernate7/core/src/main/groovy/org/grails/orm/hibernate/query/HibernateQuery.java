@@ -865,6 +865,8 @@ public class HibernateQuery extends Query {
                         hibernateQuery.offset(this.offset);
                     }
                     hibernateQuery.setDetachedCriteria(this.detachedCriteria.clone());
+                    // the aliases of createAlias are immutable, so the copy can share them
+                    hibernateQuery.aliases.addAll(this.aliases);
 
                     return hibernateQuery;
                 });
