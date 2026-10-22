@@ -149,6 +149,49 @@ def results = c.list {
 Here we find all accounts that have either performed transactions in the last 10 days OR have been recently created in the last 10 days.
 
 
+==== Querying with Aliases
+
+
+`createAlias` joins an association and makes it available under an alias, so restrictions, projections and orders can refer to its properties as `alias.property`. The join type is an optional third argument, either a `jakarta.persistence.criteria.JoinType` or one of the Hibernate 5 criteria constants `0` (inner, the default), `1` (left outer) and `2` (right outer):
+
+[source,groovy]
+----
+import jakarta.persistence.criteria.JoinType
+
+def results = Book.createCriteria().list {
+    createAlias('author', 'a', JoinType.LEFT)
+    createAlias('a.publisher', 'p', JoinType.LEFT)
+    or {
+        eq('p.name', 'Manning')
+        isNull('a.id')
+    }
+}
+----
+
+* An alias keeps its join type when its properties are referenced, so a left join keeps the rows without the association.
+* An alias is joined even if nothing refers to it: an inner join restricts the results to the rows that have the association, and a join of a collection returns a row per element.
+* The association path may start with another alias, such as `a.publisher` above, at any depth, or be the full path `author.publisher`. A property path of the association, such as `author.name`, reuses the join of the alias created for it.
+* The aliases of a subquery, such as a <<querying-detachedCriteria,detached criteria>> used with `in` or `exists`, belong to the subquery, even if the enclosing query has an alias of the same name. A subquery refers to an alias of the enclosing query only if it does not define that alias itself.
+
+A fourth argument restricts the join itself, as the `on` condition of the join. With a left join, the rows whose association does not match it are kept, with the association missing. The condition is a closure of criteria or a criterion from `org.grails.datastore.mapping.query.Restrictions`:
+
+[source,groovy]
+----
+def results = Author.createCriteria().list {
+    createAlias('books', 'b', JoinType.LEFT) {
+        eq('b.genre', 'Fiction')
+    }
+    projections {
+        property('name')
+        property('b.title')
+    }
+}
+----
+
+Each author is returned once per fiction book, and once with a `null` title if it has none.
+
+A detached criteria accepts `createAlias` with a join type and a join condition too.
+
 ==== Querying with Projections
 
 
@@ -169,6 +212,77 @@ When multiple fields are specified in the projection, a List of values will be r
 
 Common projections include `count`, `countDistinct`, `groupProperty`, `avg`, `min`, `max`, `sum`, `id`, and `property`.
 
+
+==== Ordering Null Values
+
+
+By default the database decides whether `null` values sort first or last, and databases differ. The `nulls` argument of `order` places them explicitly; `ignoreCase: true` orders a string property ignoring the case:
+
+[source,groovy]
+----
+def results = Book.createCriteria().list {
+    createAlias('author', 'a', JoinType.LEFT)
+    order('a.name', 'asc', nulls: 'last')
+    order('published', nulls: 'first')
+}
+----
+
+The value is `'first'`, `'last'`, `'none'` or a `jakarta.persistence.criteria.Nulls` constant. The same order can be created as an `org.grails.orm.hibernate.query.HibernateOrder`, for example `order(HibernateOrder.desc('published').nullsFirst())`, which a detached criteria accepts as well.
+
+
+==== Custom Criteria, Orders and Projections
+
+
+A criterion, order or projection class of your own is translated by a handler that builds the Hibernate expression. The handler receives an `org.grails.orm.hibernate.query.CriteriaHandlerContext`, which resolves properties the way the built-in criteria do, including the aliases created with `createAlias`, and gives access to the criteria builder, the query, its root, nested criteria, subqueries and parameters. Register the handlers with `org.grails.orm.hibernate.query.CriteriaHandlers`, for example in `BootStrap`:
+
+[source,groovy]
+----
+import jakarta.persistence.criteria.Predicate
+import org.grails.orm.hibernate.query.CriteriaHandlerContext
+import org.grails.orm.hibernate.query.CriteriaHandlers
+
+class AnyLike implements Query.Criterion {
+    String property
+    List<String> patterns
+}
+
+class CoalesceOrder extends Query.Order {
+    String fallback
+    CoalesceOrder(String property, String fallback) { super(property); this.fallback = fallback }
+}
+
+class LowerProjection extends Query.Projection {
+    String property
+}
+
+CriteriaHandlers.registerCriterionHandler(AnyLike) { CriteriaHandlerContext context, AnyLike criterion ->
+    def name = context.resolve(criterion.property)
+    context.criteriaBuilder.or(criterion.patterns.collect { context.criteriaBuilder.like(name, it) } as Predicate[])
+}
+CriteriaHandlers.registerOrderHandler(CoalesceOrder) { CriteriaHandlerContext context, CoalesceOrder order ->
+    def cb = context.criteriaBuilder
+    cb.asc(cb.coalesce(context.resolve(order.property), context.resolve(order.fallback)))
+}
+CriteriaHandlers.registerProjectionHandler(LowerProjection) { CriteriaHandlerContext context, LowerProjection projection ->
+    context.criteriaBuilder.lower(context.resolve(projection.property))
+}
+----
+
+The criteria query then uses them with `add` and `order`:
+
+[source,groovy]
+----
+def results = Book.createCriteria().list {
+    createAlias('author', 'a', JoinType.LEFT)
+    add(new AnyLike(property: 'a.name', patterns: ['A%', 'B%']))
+    order(new CoalesceOrder('a.name', 'title'))
+    projections {
+        add(new LowerProjection(property: 'a.name'))
+    }
+}
+----
+
+A handler is looked up by the exact class of the criterion, order or projection. Instead of registering them in code, a library can list an implementation of `org.grails.orm.hibernate.query.CriteriaHandlerProvider` in `META-INF/services/org.grails.orm.hibernate.query.CriteriaHandlerProvider`; its handlers are registered on the first query. A criterion handler registered with `PredicateGenerator.registerCriterionHandler(type) { query, root, criteriaBuilder, criterion -> ... }` keeps working, without the context.
 
 ==== SQL Restrictions
 

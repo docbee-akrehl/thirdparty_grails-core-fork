@@ -31,14 +31,37 @@ public class JpaProjectionTranslator {
 
     private final CriteriaBuilder criteriaBuilder;
     private final JpaQueryContext context;
+    private final CriteriaHandlerContext handlerContext;
 
     public JpaProjectionTranslator(CriteriaBuilder criteriaBuilder, JpaQueryContext context) {
+        this(criteriaBuilder, context, null);
+    }
+
+    /**
+     * Creates a translator that translates custom projections with the {@link ProjectionHandler} registered for
+     * them.
+     *
+     * @param criteriaBuilder the criteria builder
+     * @param context the query context
+     * @param handlerContext the context handed to projection handlers, or {@code null} if custom projections are
+     *     not supported
+     */
+    public JpaProjectionTranslator(CriteriaBuilder criteriaBuilder, JpaQueryContext context, CriteriaHandlerContext handlerContext) {
         this.criteriaBuilder = criteriaBuilder;
         this.context = context;
+        this.handlerContext = handlerContext;
     }
 
     @SuppressWarnings("unchecked")
     public JpaExpression<?> translate(Query.Projection projection) {
+        ProjectionHandler<Query.Projection> handler = CriteriaHandlers.findProjectionHandler(projection);
+        if (handler != null) {
+            if (handlerContext == null) {
+                throw new IllegalStateException("Projection [" + projection.getClass().getName() +
+                        "] has a ProjectionHandler, but this translator has no CriteriaHandlerContext");
+            }
+            return (JpaExpression<?>) handler.handle(handlerContext, projection);
+        }
         JpaExpression<?> jpaExpression;
         String propertyName = null;
         String alias = null;

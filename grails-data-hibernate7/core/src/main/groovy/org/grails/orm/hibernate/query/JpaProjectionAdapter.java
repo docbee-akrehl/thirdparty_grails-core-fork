@@ -39,9 +39,21 @@ public class JpaProjectionAdapter {
     private final JpaProjectionTranslator translator;
 
     public JpaProjectionAdapter(HibernateCriteriaBuilder criteriaBuilder, JpaQueryContext context) {
+        this(criteriaBuilder, context, null);
+    }
+
+    /**
+     * Creates an adapter that translates custom projections with the {@link ProjectionHandler} registered for them.
+     *
+     * @param criteriaBuilder the criteria builder
+     * @param context the query context
+     * @param handlerContext the context handed to projection handlers, or {@code null} if custom projections are
+     *     not supported
+     */
+    public JpaProjectionAdapter(HibernateCriteriaBuilder criteriaBuilder, JpaQueryContext context, CriteriaHandlerContext handlerContext) {
         this.criteriaBuilder = criteriaBuilder;
         this.context = context;
-        this.translator = new JpaProjectionTranslator(criteriaBuilder, context);
+        this.translator = new JpaProjectionTranslator(criteriaBuilder, context, handlerContext);
     }
 
     public void adapt(Query.ProjectionList projectionList, jakarta.persistence.criteria.AbstractQuery<?> query) {

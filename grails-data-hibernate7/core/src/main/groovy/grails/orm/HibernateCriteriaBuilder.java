@@ -311,6 +311,31 @@ public class HibernateCriteriaBuilder extends GroovyObjectSupport implements Bui
     }
 
     /**
+     * Adds a criterion to the query, for example a custom criterion translated by a handler registered with
+     * {@link org.grails.orm.hibernate.query.CriteriaHandlers#registerCriterionHandler}, or a criterion built with
+     * {@link org.grails.datastore.mapping.query.Restrictions}.
+     *
+     * @param criterion the criterion
+     * @return this criteria
+     */
+    public org.grails.datastore.mapping.query.api.Criteria add(Query.Criterion criterion) {
+        hibernateQuery.add(criterion);
+        return this;
+    }
+
+    /**
+     * Adds a projection to the query, for example a custom projection translated by a handler registered with
+     * {@link org.grails.orm.hibernate.query.CriteriaHandlers#registerProjectionHandler}.
+     *
+     * @param projection the projection
+     * @return this projection list
+     */
+    public ProjectionList add(Query.Projection projection) {
+        hibernateQuery.projections().add(projection);
+        return this;
+    }
+
+    /**
      * A projection that selects a property name
      *
      * @param propertyName The name of the property

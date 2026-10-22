@@ -112,10 +112,11 @@ public class JpaCriteriaQueryCreator<T> {
 
         applyEagerFetchJoins(root, projectionList);
 
-        new JpaProjectionAdapter(criteriaBuilder, context).adapt(projections, (AbstractQuery<?>) cq);
+        var handlerContext = new JpaCriteriaHandlerContext(criteriaBuilder, conversionService, cq, root, context, entity);
+        new JpaProjectionAdapter(criteriaBuilder, context, handlerContext).adapt(projections, (AbstractQuery<?>) cq);
         assignGroupBy(cq, context);
 
-        assignOrderBy(cq, context);
+        assignOrderBy(cq, context, handlerContext);
         assignCriteria(cq, root, context, entity);
         return cq;
     }
@@ -164,7 +165,8 @@ public class JpaCriteriaQueryCreator<T> {
         discoverAliases(detachedCriteria.getCriteria(), context);
         joinAliases(aliases, context, subquery, root);
 
-        new JpaProjectionAdapter(criteriaBuilder, context).adapt(projections, (AbstractQuery<?>) subquery);
+        var handlerContext = new JpaCriteriaHandlerContext(criteriaBuilder, conversionService, subquery, root, context, entity);
+        new JpaProjectionAdapter(criteriaBuilder, context, handlerContext).adapt(projections, (AbstractQuery<?>) subquery);
 
         assignGroupBy(subquery, context);
 
@@ -223,7 +225,10 @@ public class JpaCriteriaQueryCreator<T> {
             return (JpaCriteriaQuery<?>) criteriaBuilder.createQuery(entity.getJavaClass());
         } else {
             var first = expressionProjections.get(0);
-            if (first instanceof Query.CountProjection || first instanceof Query.CountDistinctProjection) {
+            ProjectionHandler<Query.Projection> handler = CriteriaHandlers.findProjectionHandler(first);
+            if (handler != null) {
+                return (JpaCriteriaQuery<?>) criteriaBuilder.createQuery(handler.resultType(first));
+            } else if (first instanceof Query.CountProjection || first instanceof Query.CountDistinctProjection) {
                 return (JpaCriteriaQuery<?>) criteriaBuilder.createQuery(Long.class);
             } else if (first instanceof Query.AvgProjection) {
                 return (JpaCriteriaQuery<?>) criteriaBuilder.createQuery(Double.class);
@@ -234,6 +239,7 @@ public class JpaCriteriaQueryCreator<T> {
             } else if (first instanceof Query.PropertyProjection propertyProjection) {
                 return (JpaCriteriaQuery<?>) criteriaBuilder.createQuery(resolveProjectionType(propertyProjection));
             }
+
             return (JpaCriteriaQuery<?>) criteriaBuilder.createQuery(entity.getJavaClass());
         }
     }
@@ -263,11 +269,15 @@ public class JpaCriteriaQueryCreator<T> {
     }
 
     @SuppressWarnings("unchecked")
-    private void assignOrderBy(CriteriaQuery<?> cq, JpaQueryContext context) {
+    private void assignOrderBy(CriteriaQuery<?> cq, JpaQueryContext context, CriteriaHandlerContext handlerContext) {
         List<Query.Order> orders = detachedCriteria.getOrders();
         if (!orders.isEmpty()) {
             var jpaOrders = orders.stream()
                     .map(order -> {
+                        OrderHandler<Query.Order> handler = CriteriaHandlers.findOrderHandler(order);
+                        if (handler != null) {
+                            return handler.handle(handlerContext, order);
+                        }
                         var propertyName = order.getProperty();
                         Expression<?> expression = context.getFullyQualifiedExpression(propertyName);
                         if (order.isIgnoreCase() && expression.getJavaType().equals(String.class)) {

@@ -78,6 +78,9 @@ public class PredicateGenerator {
      *     }
      * </pre>
      *
+     * <p>To resolve aliases created with {@code createAlias}, translate nested criteria, bind parameters or build
+     * subqueries, implement a {@link ContextualCriterionHandler} instead (see {@link CriteriaHandlers}).
+     *
      * @param <C> the specific criterion type
      */
     @FunctionalInterface
@@ -89,6 +92,19 @@ public class PredicateGenerator {
             HibernateCriteriaBuilder criteriaBuilder,
             Query.Criterion criterion
         );
+
+        /**
+         * Translates the criterion with the state of the query being translated. The default implementation calls
+         * {@link #handle(AbstractQuery, From, HibernateCriteriaBuilder, Query.Criterion)} with the query, root and
+         * criteria builder of the context; a {@link ContextualCriterionHandler} implements this method instead.
+         *
+         * @param context the state of the query being translated
+         * @param criterion the criterion
+         * @return the predicate
+         */
+        default Predicate handle(CriteriaHandlerContext context, Query.Criterion criterion) {
+            return handle(context.getQuery(), context.getRoot(), context.getCriteriaBuilder(), criterion);
+        }
     }
 
     /**
@@ -126,6 +142,7 @@ public class PredicateGenerator {
                     Thread.currentThread().getContextClassLoader())
                 .forEach(p -> CUSTOM_HANDLERS.putIfAbsent(p.criterionType(), p.criterionHandler()));
         }
+        CriteriaHandlers.loadServiceProviders();
     }
 
     /**
@@ -147,6 +164,7 @@ public class PredicateGenerator {
     public static void clearCustomCriterionHandlers() {
         CUSTOM_HANDLERS.clear();
         SERVICE_LOADERS_INITIALIZED.set(false);
+        CriteriaHandlers.resetServiceProviders();
     }
 
     private final HibernateCriteriaBuilder criteriaBuilder;
@@ -189,7 +207,8 @@ public class PredicateGenerator {
         if (criterion instanceof Query.Criterion c) {
             CriterionHandler customHandler = CUSTOM_HANDLERS.get(c.getClass());
             if (customHandler != null) {
-                return customHandler.handle(criteriaQuery, root, criteriaBuilder, c);
+                return customHandler.handle(
+                        new JpaCriteriaHandlerContext(criteriaBuilder, conversionService, criteriaQuery, root, fromsByProvider, entity), c);
             }
         }
 
