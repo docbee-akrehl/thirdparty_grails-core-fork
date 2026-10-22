@@ -40,7 +40,9 @@ class CollectionKeyColumnUpdaterSpec extends HibernateGormDatastoreSpec {
             CKCUOwnerMany,
             CKCUItemMany1,
             CKCUItemMany2,
-            CKCUBasicOwner
+            CKCUBasicOwner,
+            CKCUOwnerManyWithBackReference,
+            CKCUChild
         )
     }
 
@@ -87,9 +89,26 @@ class CollectionKeyColumnUpdaterSpec extends HibernateGormDatastoreSpec {
         column.isNullable()
     }
 
-    def "bind sets updateable false when multiple unidirectional"() {
+    def "bind keeps the key of a join table collection updateable although the owner has several unidirectional collections"() {
         given:
         def property = propertyFor(CKCUOwnerMany, "items1")
+        def column = new Column("test_col")
+        def key = new DependantValue(getGrailsDomainBinder().getMetadataBuildingContext(), null, null)
+        key.addColumn(column)
+        key.setUpdateable(false)
+
+        when:
+        updater.bind(property)
+
+        then:
+        1 * collectionKeyBinder.bind(property) >> key
+        key.isUpdateable()
+        column.isNullable()
+    }
+
+    def "bind sets updateable false when multiple unidirectional"() {
+        given: 'a collection bound with a foreign key in the element table, of an owner with two unidirectional ones'
+        def property = propertyFor(CKCUOwnerManyWithBackReference, "children")
         def column = new Column("test_col")
         def key = new DependantValue(getGrailsDomainBinder().getMetadataBuildingContext(), null, null)
         key.addColumn(column)
@@ -138,4 +157,17 @@ class CKCUItemMany1 {
 @Entity
 class CKCUItemMany2 {
     Long id
+}
+
+@Entity
+class CKCUOwnerManyWithBackReference {
+    Long id
+    static hasMany = [items1: CKCUItemMany1, items2: CKCUItemMany2, children: CKCUChild]
+}
+
+@Entity
+class CKCUChild {
+    Long id
+    CKCUOwnerManyWithBackReference owner
+    static belongsTo = [owner: CKCUOwnerManyWithBackReference]
 }

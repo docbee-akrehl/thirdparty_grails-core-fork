@@ -47,12 +47,16 @@ public class CollectionKeyColumnUpdater {
                 .filter(p -> !p.isBidirectional())
                 .count();
 
-        // Collections of basic values or enums (HibernateToManyCollectionProperty) always keep an updatable key: they
-        // have no inverse side, and Hibernate writes no rows for a collection whose key is not updatable.
-        // For entity collections (HibernateToManyEntityProperty) the key is non-updatable when the owner has two or
-        // more unidirectional to-many properties (counting every unidirectional HibernateToManyProperty of the owner),
-        // the existing rule for issue 10811.
-        key.setUpdateable(property instanceof HibernateToManyCollectionProperty || unidirectionalCount <= 1);
+        // Hibernate writes no rows for a collection whose key is not updatable. So the key stays updatable for
+        // - collections of basic values or enums (HibernateToManyCollectionProperty): they have no inverse side;
+        // - collections stored in a join table (a unidirectional one-to-many, a many-to-many, a Map): the key is a
+        //   column of the join table that only this collection writes (docbee: the elements of every unidirectional
+        //   hasMany were lost once the owner had a second one; Hibernate 5's GORM stored them).
+        // A collection bound with a foreign key in the element's table keeps the existing rule for issue 10811: its
+        // key is non-updatable when the owner has two or more unidirectional to-many properties.
+        key.setUpdateable(property instanceof HibernateToManyCollectionProperty ||
+                !property.shouldBindWithForeignKey() ||
+                unidirectionalCount <= 1);
     }
 
 }
