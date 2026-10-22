@@ -217,6 +217,10 @@ public class HibernateCriteriaBuilder extends GroovyObjectSupport implements Bui
      * keeps its type when properties are referenced through the alias, so a left join keeps the rows without
      * the association, and the alias is joined even if nothing refers to it.
      *
+     * <p>The association path may start with another alias, for example {@code createAlias('c.mandant', 'cm')}
+     * after {@code createAlias('customer', 'c')}, at any depth, or be the full association path
+     * {@code customer.mandant}; a segment that is the association path of another alias reuses its join.
+     *
      * @param associationPath the association to join
      * @param alias the alias under which the joined association can be referenced
      * @param joinType the join type

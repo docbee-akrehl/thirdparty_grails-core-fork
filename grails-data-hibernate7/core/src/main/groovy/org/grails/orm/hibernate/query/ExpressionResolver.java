@@ -15,6 +15,9 @@
  */
 package org.grails.orm.hibernate.query;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.From;
 import jakarta.persistence.criteria.Path;
@@ -27,6 +30,7 @@ import jakarta.persistence.criteria.Path;
 public class ExpressionResolver {
     private final AliasRegistry aliasRegistry;
     private final JoinTracker joinTracker;
+    private final Map<String, String> associationPaths = new HashMap<>();
 
     public ExpressionResolver(AliasRegistry aliasRegistry, JoinTracker joinTracker) {
         this.aliasRegistry = aliasRegistry;
@@ -112,14 +116,68 @@ public class ExpressionResolver {
         if (aliasRegistry.isDefined(alias)) {
             HibernateAlias def = aliasRegistry.getDefinition(alias);
             if (def != null && def.path() != null) {
-                From<?, ?> join = joinTracker.getRoot().join(def.path(), def.joinType());
-                aliasRegistry.realize(alias, join);
-                joinTracker.addJoin(alias, join);
-                registerAssociationPath(def.path(), join);
+                From<?, ?> join = joinAlias(alias, def);
                 return subPath != null ? getPath(join, subPath) : join;
             }
         }
 
+        return null;
+    }
+
+    /**
+     * Joins the association path of an alias with the alias' join type. The path may start with another alias
+     * of this query ({@code c.mandant}), at any depth, or be the full association path from the root
+     * ({@code customer.mandant}); a segment of a full path that is the association path of another alias reuses
+     * that alias' join, as Hibernate 5's criteria did.
+     */
+    private From<?, ?> joinAlias(String alias, HibernateAlias def) {
+        From<?, ?> from = joinTracker.getRoot();
+        String associationPath = null;
+        String path = def.path();
+        int dot = path.indexOf('.');
+        if (dot > 0) {
+            String head = path.substring(0, dot);
+            if (!head.equals(alias) && aliasRegistry.getLocalDefinition(head) != null &&
+                    resolveFromAlias(head, null) instanceof From<?, ?> aliasFrom) {
+                from = aliasFrom;
+                associationPath = associationPaths.getOrDefault(head, head);
+                path = path.substring(dot + 1);
+            }
+        }
+        String[] segments = path.split("\\.");
+        for (int i = 0; i < segments.length; i++) {
+            associationPath = associationPath == null ? segments[i] : associationPath + '.' + segments[i];
+            boolean last = i == segments.length - 1;
+            From<?, ?> existing = last ? null : joinOfAssociationPath(associationPath, alias);
+            if (existing != null) {
+                from = existing;
+            } else {
+                from = from.join(segments[i], def.joinType());
+                if (!last) {
+                    registerAssociationPath(associationPath, from);
+                }
+            }
+        }
+        aliasRegistry.realize(alias, from);
+        joinTracker.addJoin(alias, from);
+        associationPaths.put(alias, associationPath);
+        registerAssociationPath(associationPath, from);
+        return from;
+    }
+
+    /**
+     * Returns the join of an association path in this query: one already made, or the join of another alias of
+     * this query created for exactly that path.
+     */
+    private From<?, ?> joinOfAssociationPath(String associationPath, String joiningAlias) {
+        From<?, ?> existing = joinTracker.getLocalJoin(associationPath);
+        if (existing != null) {
+            return existing;
+        }
+        String owner = aliasRegistry.findLocalAliasForPath(associationPath);
+        if (owner != null && !owner.equals(joiningAlias) && resolveFromAlias(owner, null) instanceof From<?, ?> ownerFrom) {
+            return ownerFrom;
+        }
         return null;
     }
 

@@ -25,7 +25,7 @@ import grails.gorm.annotation.Entity
  *
  * <pre>
  * T1 'A' -> C1 -> M1 (active), links L1, L2
- * T2 'B' -> C2 -> M2 (inactive)
+ * T2 'B' -> C2 -> M2 (inactive) -> parent M1
  * T3 'Z' -> no customer, link L3
  * T4 'Z' -> C3 -> no mandant
  * T5 'X' -> no customer
@@ -37,7 +37,7 @@ class AliasCriteriaModel {
 
     static void seed() {
         def m1 = new AliasMandant(name: 'M1', active: true).save()
-        def m2 = new AliasMandant(name: 'M2', active: false).save()
+        def m2 = new AliasMandant(name: 'M2', active: false, parent: m1).save()
         def c1 = new AliasCustomer(name: 'C1', mandant: m1).save()
         def c2 = new AliasCustomer(name: 'C2', mandant: m2).save()
         def c3 = new AliasCustomer(name: 'C3').save()
@@ -54,6 +54,11 @@ class AliasCriteriaModel {
 class AliasMandant {
     String name
     Boolean active
+    AliasMandant parent
+
+    static constraints = {
+        parent nullable: true
+    }
 }
 
 @Entity

@@ -73,7 +73,8 @@ public final class HibernateDetachedCriteriaExtension {
      * {@code createAlias} of a criteria query does. The alias is joined even if nothing refers to it.
      *
      * @param self the detached criteria
-     * @param associationPath the association to join
+     * @param associationPath the association to join; it may start with another alias, for example
+     *     {@code c.mandant}, or be a full association path such as {@code customer.mandant}
      * @param alias the alias under which the joined association can be referenced
      * @param joinType the join type as a Hibernate 5 criteria constant: {@code 0} inner, {@code 1} left outer,
      *     {@code 2} right outer join
@@ -88,7 +89,8 @@ public final class HibernateDetachedCriteriaExtension {
      * {@code createAlias} of a criteria query does. The alias is joined even if nothing refers to it.
      *
      * @param self the detached criteria
-     * @param associationPath the association to join
+     * @param associationPath the association to join; it may start with another alias, for example
+     *     {@code c.mandant}, or be a full association path such as {@code customer.mandant}
      * @param alias the alias under which the joined association can be referenced
      * @param joinType the join type
      * @return the detached criteria

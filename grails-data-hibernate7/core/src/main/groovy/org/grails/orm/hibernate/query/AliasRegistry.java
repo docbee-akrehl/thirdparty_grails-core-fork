@@ -64,6 +64,32 @@ public class AliasRegistry {
         return def;
     }
 
+    /**
+     * Returns the definition of an alias created in this query, without looking at the enclosing query.
+     *
+     * @param alias the alias
+     * @return the definition, or {@code null} if the alias is not defined in this query
+     */
+    public HibernateAlias getLocalDefinition(String alias) {
+        return definitions.get(alias);
+    }
+
+    /**
+     * Returns an alias created in this query for exactly the given association path.
+     *
+     * @param path the association path
+     * @return the alias, or {@code null} if no alias of this query was created for the path
+     */
+    public String findLocalAliasForPath(String path) {
+        for (Map.Entry<String, HibernateAlias> entry : definitions.entrySet()) {
+            HibernateAlias definition = entry.getValue();
+            if (definition != null && path.equals(definition.path()) && !path.equals(entry.getKey())) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
     public Expression<?> getRealized(String alias) {
         Expression<?> expr = realizedExpressions.get(alias);
         if (expr == null && parent != null) {
