@@ -25,6 +25,12 @@ import jakarta.persistence.criteria.Expression;
 /**
  * Registry for user-defined and auto-generated aliases in a JPA query.
  *
+ * <p>The registry of a subquery that scopes association paths does not inherit the association path aliases of
+ * the enclosing query: the implicit alias of a dotted property path ({@code customer} of {@code customer.name}) and
+ * an alias named like its association path ({@code createAlias('customer', 'customer')}). The subquery's own
+ * association path of that name refers to the subquery's root, as in Hibernate 5's criteria. Any other alias of
+ * the enclosing query stays visible and correlates the subquery with it.
+ *
  * @since 8.0
  */
 public class AliasRegistry {
@@ -32,13 +38,56 @@ public class AliasRegistry {
     private final Map<String, Expression<?>> realizedExpressions = new HashMap<>();
     private final Set<String> implicitAliases = new HashSet<>();
     private final AliasRegistry parent;
+    private final boolean scopesAssociationPaths;
 
     public AliasRegistry() {
-        this.parent = null;
+        this(null, false);
     }
 
     public AliasRegistry(AliasRegistry parent) {
+        this(parent, false);
+    }
+
+    /**
+     * @param parent the registry of the enclosing query or association, or {@code null}
+     * @param scopesAssociationPaths whether the association path aliases of the enclosing query are hidden from
+     *        this registry, as for a subquery
+     */
+    public AliasRegistry(AliasRegistry parent, boolean scopesAssociationPaths) {
         this.parent = parent;
+        this.scopesAssociationPaths = scopesAssociationPaths;
+    }
+
+    /**
+     * Returns whether an alias of the enclosing query is hidden from this registry because it is an association
+     * path alias and this registry scopes association paths. An alias defined or realized in this registry is
+     * never hidden.
+     *
+     * @param alias the alias
+     * @return {@code true} if the enclosing query's alias of that name is not visible here
+     */
+    public boolean hidesInheritedAlias(String alias) {
+        return scopesAssociationPaths && parent != null && !definitions.containsKey(alias) &&
+                !realizedExpressions.containsKey(alias) && parent.isAssociationPathAlias(alias);
+    }
+
+    /**
+     * Returns whether the nearest definition of the alias is an association path alias: an implicit alias or an
+     * alias named like its association path.
+     */
+    private boolean isAssociationPathAlias(String alias) {
+        if (definitions.containsKey(alias)) {
+            HibernateAlias definition = definitions.get(alias);
+            return implicitAliases.contains(alias) || (definition != null && alias.equals(definition.path()));
+        }
+        if (realizedExpressions.containsKey(alias)) {
+            return false;
+        }
+        return parent != null && parent.isAssociationPathAlias(alias);
+    }
+
+    private boolean inherits(String alias) {
+        return parent != null && !hidesInheritedAlias(alias);
     }
 
     public void define(String alias, HibernateAlias definition) {
@@ -78,7 +127,7 @@ public class AliasRegistry {
         if (definitions.containsKey(alias) || realizedExpressions.containsKey(alias)) {
             return true;
         }
-        if (parent != null) {
+        if (inherits(alias)) {
             return parent.isDefined(alias);
         }
         return false;
@@ -86,7 +135,7 @@ public class AliasRegistry {
 
     public HibernateAlias getDefinition(String alias) {
         HibernateAlias def = definitions.get(alias);
-        if (def == null && parent != null) {
+        if (def == null && inherits(alias)) {
             return parent.getDefinition(alias);
         }
         return def;
@@ -130,13 +179,13 @@ public class AliasRegistry {
 
     public Expression<?> getRealized(String alias) {
         Expression<?> expr = realizedExpressions.get(alias);
-        if (expr == null && parent != null) {
+        if (expr == null && inherits(alias)) {
             return parent.getRealized(alias);
         }
         return expr;
     }
 
     public boolean hasRealized(String alias) {
-        return realizedExpressions.containsKey(alias) || (parent != null && parent.hasRealized(alias));
+        return realizedExpressions.containsKey(alias) || (inherits(alias) && parent.hasRealized(alias));
     }
 }

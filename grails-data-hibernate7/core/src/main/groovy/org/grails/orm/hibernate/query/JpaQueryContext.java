@@ -65,21 +65,33 @@ public class JpaQueryContext implements Cloneable {
         return new JpaQueryContext(null, aliases, root);
     }
 
+    /**
+     * Creates the context of a subquery. The subquery sees the aliases of the enclosing query, but not its
+     * association paths: {@code customer { … }}, {@code eq('customer', x)} or {@code customer.name} in the subquery
+     * refer to the subquery's own root even when the enclosing query joins {@code customer}.
+     */
     public static JpaQueryContext forSubquery(JpaQueryContext parent, From<?, ?> root) {
-        return new JpaQueryContext(parent, null, root);
+        return new JpaQueryContext(parent, null, root, true);
     }
 
+    /**
+     * Creates the context of a subquery with its own aliases, see {@link #forSubquery(JpaQueryContext, From)}.
+     */
     public static JpaQueryContext forSubquery(JpaQueryContext parent, List<HibernateAlias> aliases, From<?, ?> root) {
-        return new JpaQueryContext(parent, aliases, root);
+        return new JpaQueryContext(parent, aliases, root, true);
     }
 
     /**
      * Internal constructor for subqueries and base initialization.
      */
     public JpaQueryContext(JpaQueryContext parent, List<HibernateAlias> aliases, From<?, ?> root) {
+        this(parent, aliases, root, false);
+    }
+
+    private JpaQueryContext(JpaQueryContext parent, List<HibernateAlias> aliases, From<?, ?> root, boolean subquery) {
         this.parent = parent;
-        this.joinTracker = new JoinTracker(parent != null ? parent.getJoinTracker() : null, root);
-        this.aliasRegistry = new AliasRegistry(parent != null ? parent.getAliasRegistry() : null);
+        this.joinTracker = new JoinTracker(parent != null ? parent.getJoinTracker() : null, root, subquery);
+        this.aliasRegistry = new AliasRegistry(parent != null ? parent.getAliasRegistry() : null, subquery);
         this.resolver = new ExpressionResolver(aliasRegistry, joinTracker);
         if (aliases != null) {
             for (HibernateAlias alias : aliases) {
@@ -114,6 +126,16 @@ public class JpaQueryContext implements Cloneable {
 
     public void addFrom(String path, From<?, ?> from) {
         joinTracker.addJoin(path, from);
+    }
+
+    /**
+     * Registers the join of an association path of this context's root, which a subquery does not see.
+     *
+     * @param path the association path
+     * @param from the join
+     */
+    public void addAssociationPathFrom(String path, From<?, ?> from) {
+        joinTracker.addAssociationPathJoin(path, from);
     }
 
     public From<?, ?> getFrom(String path) {
@@ -165,12 +187,13 @@ public class JpaQueryContext implements Cloneable {
     }
 
     public boolean hasAlias(String alias) {
-        return aliasRegistry.isDefined(alias) || aliasRegistry.hasRealized(alias) || (parent != null && parent.hasAlias(alias));
+        return aliasRegistry.isDefined(alias) || aliasRegistry.hasRealized(alias) ||
+                (parent != null && !aliasRegistry.hidesInheritedAlias(alias) && parent.hasAlias(alias));
     }
 
     public Expression<?> getAliasedExpression(String alias) {
         Expression<?> expr = aliasRegistry.getRealized(alias);
-        if (expr == null && parent != null) {
+        if (expr == null && parent != null && !aliasRegistry.hidesInheritedAlias(alias)) {
             return parent.getAliasedExpression(alias);
         }
         return expr;

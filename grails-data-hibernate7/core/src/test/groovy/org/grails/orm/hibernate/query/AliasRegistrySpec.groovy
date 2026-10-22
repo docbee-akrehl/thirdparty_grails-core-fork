@@ -94,4 +94,50 @@ class AliasRegistrySpec extends Specification {
         child.getRealized("f") == childExpr
         parent.getRealized("f") == parentExpr
     }
+
+    def "a subquery registry does not inherit the association path aliases of the enclosing query"() {
+        given:
+        def parent = new AliasRegistry()
+        def explicitDefinition = new HibernateAlias("customer", "c", JoinType.INNER)
+        def pathDefinition = new HibernateAlias("mandant", "mandant", JoinType.LEFT)
+        parent.define("c", explicitDefinition)
+        parent.realize("c", Mock(Expression))
+        parent.defineImplicit("customer")
+        parent.realize("customer", Mock(Expression))
+        parent.define("mandant", pathDefinition)
+        def subquery = new AliasRegistry(parent, true)
+        def association = new AliasRegistry(parent)
+
+        expect: 'the explicit alias is visible in the subquery, the association paths are not'
+        subquery.isDefined("c")
+        subquery.getDefinition("c") == explicitDefinition
+        subquery.hasRealized("c")
+        !subquery.hidesInheritedAlias("c")
+        !subquery.isDefined("customer")
+        !subquery.hasRealized("customer")
+        subquery.getRealized("customer") == null
+        subquery.hidesInheritedAlias("customer")
+        !subquery.isDefined("mandant")
+        subquery.getDefinition("mandant") == null
+
+        and: 'a registry that does not scope association paths, as of an association block, inherits them all'
+        association.isDefined("customer")
+        association.hasRealized("customer")
+        association.getDefinition("mandant") == pathDefinition
+        !association.hidesInheritedAlias("customer")
+    }
+
+    def "an alias defined in the subquery itself is never hidden"() {
+        given:
+        def parent = new AliasRegistry()
+        parent.defineImplicit("customer")
+        def subquery = new AliasRegistry(parent, true)
+
+        when:
+        subquery.defineImplicit("customer")
+
+        then:
+        subquery.isDefined("customer")
+        !subquery.hidesInheritedAlias("customer")
+    }
 }

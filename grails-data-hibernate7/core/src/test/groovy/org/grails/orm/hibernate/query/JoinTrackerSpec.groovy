@@ -72,4 +72,45 @@ class JoinTrackerSpec extends Specification {
         child.getJoin("face") == childJoin
         parent.getJoin("face") == parentJoin
     }
+
+    def "a subquery tracker sees the aliases of the enclosing query but not its association paths"() {
+        given:
+        def parent = new JoinTracker(Mock(From))
+        def aliasJoin = Mock(From)
+        def pathJoin = Mock(From)
+        parent.addJoin("c", aliasJoin)
+        parent.addAssociationPathJoin("customer", pathJoin)
+        def subquery = new JoinTracker(parent, Mock(From), true)
+        def association = new JoinTracker(parent, Mock(From))
+
+        expect:
+        parent.getJoin("customer") == pathJoin
+        parent.getLocalJoin("customer") == pathJoin
+        subquery.getJoin("c") == aliasJoin
+        subquery.getJoin("customer") == null
+
+        and: 'a tracker that does not scope association paths, as of an association block, sees both'
+        association.getJoin("c") == aliasJoin
+        association.getJoin("customer") == pathJoin
+    }
+
+    def "a subquery tracker sees the aliases of every enclosing query but none of their association paths"() {
+        given:
+        def outer = new JoinTracker(Mock(From))
+        def aliasJoin = Mock(From)
+        outer.addJoin("c", aliasJoin)
+        outer.addAssociationPathJoin("customer", Mock(From))
+        def association = new JoinTracker(outer, Mock(From))
+        association.addAssociationPathJoin("mandant", Mock(From))
+        def subquery = new JoinTracker(association, Mock(From), true)
+        def ownJoin = Mock(From)
+
+        when:
+        subquery.addAssociationPathJoin("customer", ownJoin)
+
+        then:
+        subquery.getJoin("c") == aliasJoin
+        subquery.getJoin("customer") == ownJoin
+        subquery.getJoin("mandant") == null
+    }
 }

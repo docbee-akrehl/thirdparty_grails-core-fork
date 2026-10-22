@@ -331,7 +331,7 @@ public class PredicateGenerator {
                 associationRoot = from;
             } else {
                 associationRoot = fromsByProvider.getRoot().join(associationName);
-                fromsByProvider.addFrom(associationName, associationRoot);
+                fromsByProvider.addAssociationPathFrom(associationName, associationRoot);
             }
         }
 
@@ -355,7 +355,7 @@ public class PredicateGenerator {
                 associationRoot = from;
             } else {
                 associationRoot = fromsByProvider.getRoot().join(associationName, JoinType.INNER);
-                fromsByProvider.addFrom(associationName, associationRoot);
+                fromsByProvider.addAssociationPathFrom(associationName, associationRoot);
             }
         }
 

@@ -186,7 +186,13 @@ public class ExpressionResolver {
             }
         }
         aliasRegistry.realize(alias, from);
-        joinTracker.addJoin(alias, from);
+        if (alias.equals(def.path())) {
+            // an implicit alias, or an alias named like its association path, is the association path: a
+            // subquery's own path of that name is not correlated with it
+            joinTracker.addAssociationPathJoin(alias, from);
+        } else {
+            joinTracker.addJoin(alias, from);
+        }
         associationPaths.put(alias, associationPath);
         registerAssociationPath(associationPath, from);
         return from;
@@ -211,11 +217,12 @@ public class ExpressionResolver {
     /**
      * Makes the join of an alias also the join of its association path, so the association referenced by its
      * property name, for example {@code customer.name} next to {@code createAlias('customer', 'c')}, reuses the
-     * alias' join instead of joining the association a second time, as Hibernate 5's criteria did.
+     * alias' join instead of joining the association a second time, as Hibernate 5's criteria did. The path is
+     * registered in the current query context only: a subquery's own {@code customer} is not correlated with it.
      */
     private void registerAssociationPath(String path, From<?, ?> join) {
         if (joinTracker.getLocalJoin(path) == null) {
-            joinTracker.addJoin(path, join);
+            joinTracker.addAssociationPathJoin(path, join);
         }
     }
 
