@@ -1342,6 +1342,24 @@ public class HibernateCriteriaBuilder extends GroovyObjectSupport implements Bui
     }
 
     /**
+     * Creates a "not equal" Criterion with Hibernate 5's semantics: it renders {@code x <> ?}, so the rows where the
+     * property is {@code null} do not match, unlike {@link #ne(String, Object)}, which renders
+     * {@code (x <> ? or x is null)}. A detached criteria value becomes a subquery; a {@code null} value is
+     * {@code is not null}.
+     *
+     * <p>docbee fork: a migration helper for code written against Hibernate 5, to be removed once its callers are
+     * migrated to {@code ne}.
+     *
+     * @param propertyName The property name
+     * @param propertyValue The property value
+     * @return The criterion object
+     */
+    public Criteria neLegacy(String propertyName, Object propertyValue) {
+        hibernateQuery.neLegacy(propertyName, propertyValue);
+        return this;
+    }
+
+    /**
      * Creates a "between" Criterion based on the property name and specified lo and hi values
      *
      * @param propertyName The property name

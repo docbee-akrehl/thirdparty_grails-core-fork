@@ -380,12 +380,14 @@ public class PredicateGenerator {
             throw new ConfigurationException("Cannot use comparison criteria on non-existent property [" + propertyName + "] of class [" + entity.getJavaClass().getName() + "]");
         }
 
-        if (pc instanceof EqualsIgnoreCase) {
+        if (pc instanceof NotEqualsLegacy) {
+            return handleNotEquals(criteriaQuery, pc, propertyPath, fromsByProvider, entity, false);
+        } else if (pc instanceof EqualsIgnoreCase) {
             return handleEqualsIgnoreCase(criteriaQuery, pc, propertyPath, fromsByProvider, entity);
         } else if (pc instanceof Query.Equals) {
             return handleEquals(criteriaQuery, pc, propertyPath, fromsByProvider, entity);
         } else if (pc instanceof Query.NotEquals) {
-            return handleNotEquals(criteriaQuery, pc, propertyPath, fromsByProvider, entity);
+            return handleNotEquals(criteriaQuery, pc, propertyPath, fromsByProvider, entity, true);
         } else if (pc instanceof Query.ILike) {
             return criteriaBuilder.ilike((Expression<String>) propertyPath, (String) convertValue(entity, propertyName, pc.getValue(), propertyPath));
         } else if (pc instanceof Query.RLike rLike) {
@@ -610,13 +612,19 @@ public class PredicateGenerator {
                 value.toString().toLowerCase(Locale.ROOT));
     }
 
+    /**
+     * Renders a not-equal restriction: {@code (x <> ? or x is null)} for {@code ne}, or with {@code includeNulls}
+     * {@code false} {@code x <> ?}, which excludes the rows where the column is {@code NULL}, as Hibernate 5's
+     * {@code Restrictions.ne} did ({@link NotEqualsLegacy}). A {@code null} value is {@code x is not null}.
+     */
     @SuppressWarnings("unchecked")
     private Predicate handleNotEquals(
         AbstractQuery<?> criteriaQuery,
         Query.PropertyCriterion pc,
         Expression<?> propertyPath,
         JpaQueryContext fromsByProvider,
-        GrailsHibernatePersistentEntity entity) {
+        GrailsHibernatePersistentEntity entity,
+        boolean includeNulls) {
         Object value = pc.getValue();
         if (value == null) {
             return criteriaBuilder.isNotNull(propertyPath);
@@ -639,11 +647,15 @@ public class PredicateGenerator {
             }
 
             creator.populateSubquery((JpaSubQuery) subquery);
-            return criteriaBuilder.or(criteriaBuilder.notEqual(propertyPath, subquery), criteriaBuilder.isNull(propertyPath));
+            return orIsNull(criteriaBuilder.notEqual(propertyPath, subquery), propertyPath, includeNulls);
         }
-        return criteriaBuilder.or(
+        return orIsNull(
             criteriaBuilder.notEqual(propertyPath, convertComparisonValue(entity, pc.getProperty(), value, fromsByProvider, propertyPath)),
-            criteriaBuilder.isNull(propertyPath));
+            propertyPath, includeNulls);
+    }
+
+    private Predicate orIsNull(Predicate notEqual, Expression<?> propertyPath, boolean includeNulls) {
+        return includeNulls ? criteriaBuilder.or(notEqual, criteriaBuilder.isNull(propertyPath)) : notEqual;
     }
 
     @SuppressWarnings("unchecked")

@@ -733,6 +733,16 @@ public class HibernateQuery extends Query {
         return this;
     }
 
+    /**
+     * Restricts the property to values not equal to the given value with Hibernate 5's semantics: the rows where
+     * the property is {@code null} do not match ({@link NotEqualsLegacy}), unlike {@link #ne(String, Object)}.
+     * docbee fork: a migration helper, to be removed once its callers are migrated to {@code ne}.
+     */
+    public Query neLegacy(String propertyName, Object propertyValue) {
+        detachedCriteria.add(new NotEqualsLegacy(calculatePropertyName(propertyName), propertyValue));
+        return this;
+    }
+
     public Query eqProperty(String propertyName, String otherPropertyName) {
         detachedCriteria.eqProperty(calculatePropertyName(propertyName), otherPropertyName);
         return this;

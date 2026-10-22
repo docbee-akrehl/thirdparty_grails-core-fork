@@ -31,7 +31,7 @@ import org.grails.datastore.mapping.query.Query;
 import org.grails.datastore.mapping.query.api.Criteria;
 
 /**
- * Groovy extension methods that add {@code sqlRestriction}, {@code createAlias} with a join type and with-clause
+ * Groovy extension methods that add {@code sqlRestriction}, {@code neLegacy}, {@code createAlias} with a join type and with-clause
  * and {@code order} with a null precedence to detached criteria, registered in
  * {@code META-INF/services/org.codehaus.groovy.runtime.ExtensionModule}. The {@code and}, {@code or} and {@code not}
  * blocks of a criteria query, and the association blocks inside them, resolve their calls against a detached
@@ -43,6 +43,21 @@ import org.grails.datastore.mapping.query.api.Criteria;
 public final class HibernateDetachedCriteriaExtension {
 
     private HibernateDetachedCriteriaExtension() {
+    }
+
+    /**
+     * Restricts the property to values not equal to the given value with Hibernate 5's semantics: the rows where
+     * the property is {@code null} do not match ({@link NotEqualsLegacy}), unlike {@code ne}, which includes them.
+     * docbee fork: a migration helper, to be removed once its callers are migrated to {@code ne}.
+     *
+     * @param self the detached criteria
+     * @param propertyName the property
+     * @param propertyValue the value, a detached criteria for a subquery, or {@code null} for {@code is not null}
+     * @return the detached criteria
+     */
+    public static Criteria neLegacy(AbstractDetachedCriteria<?> self, String propertyName, Object propertyValue) {
+        self.add(new NotEqualsLegacy(propertyName, propertyValue));
+        return self;
     }
 
     /**
