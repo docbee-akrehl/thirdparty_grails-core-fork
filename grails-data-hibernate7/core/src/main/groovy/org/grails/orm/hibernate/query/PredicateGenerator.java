@@ -323,11 +323,21 @@ public class PredicateGenerator {
         if (junction instanceof Query.Conjunction) {
             return criteriaBuilder.and(predicates);
         } else if (junction instanceof Query.Disjunction) {
-            return criteriaBuilder.or(predicates);
+            return disjunction(predicates);
         } else if (junction instanceof Query.Negation) {
-            return criteriaBuilder.not(criteriaBuilder.or(predicates));
+            return criteriaBuilder.not(disjunction(predicates));
         }
         throw new IllegalArgumentException("Unsupported junction: " + junction);
+    }
+
+    /**
+     * Combines the predicates of a GORM disjunction with OR. A disjunction without predicates restricts nothing, as
+     * with GORM for Hibernate 5, whose Hibernate {@code Junction} rendered a junction without conditions as
+     * {@code 1=1}; JPA's {@code or()} without arguments is false, so a conditionally filled {@code or} block would
+     * select no row. A negation is the negated disjunction of its criteria, so an empty one is false.
+     */
+    private Predicate disjunction(Predicate[] predicates) {
+        return predicates.length == 0 ? criteriaBuilder.conjunction() : criteriaBuilder.or(predicates);
     }
 
     private Predicate handleAssociationCriteria(
