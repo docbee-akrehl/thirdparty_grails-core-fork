@@ -61,6 +61,7 @@ name,description,default value
 `hibernate.configLocations`, Location of additional Hibernate XML configuration files
 `hibernate.packagesToScan`, Specify packages to search for autodetection of your entity classes in the classpath
 `hibernate.grails.proxy.lazy_to_string`, Whether `toString()` on an uninitialized proxy avoids initializing it (see Proxies and toString()), `false`
+`hibernate.grails.id.sequence.default_increment_size`, The increment size of an `id generator: 'sequence'` mapping without `increment_size` (see Default Increment Size of Sequences), `50` with the `pooled-lo` optimizer
 |===
 
 In addition, any additional settings that start with `hibernate.` are passed through to Hibernate, so if there is any specific feature of Hibernate you wish to configure that is possible.
@@ -82,5 +83,48 @@ hibernate:
 ----
 
 With this setting enabled, `toString()` on an uninitialized proxy returns `entityName:id` (for example `com.example.Author:1`) without initializing it. Once the proxy has been initialized, `toString()` always delegates to the domain class's implementation.
+
+==== Default Increment Size of Sequences
+
+An identifier mapped with `id generator: 'sequence'` (also `sequence-identity` and `hilo`, and the default id of a
+`tablePerConcreteClass` hierarchy) whose `params` give no `increment_size` gets an increment size of `50` with the
+`pooled-lo` optimizer: one `nextval` reserves a block of 50 ids, and the sequence is expected to advance by 50.
+GORM for Hibernate 5 drew one value per id instead (Hibernate's default increment size of `1`, without an optimizer).
+
+When the sequences are not created by Hibernate but advance by 1 - for example created by a migration tool after the
+application started, so `hibernate.id.sequence.increment_size_mismatch_strategy` finds nothing to compare with - the
+blocks of 50 overlap: two inserts of the same domain class, of two domain classes sharing the sequence, of two
+application nodes or of two runs of the application receive the same id. Set the default increment size to `1` to draw
+one sequence value per id as GORM for Hibernate 5 did:
+
+[source,yaml]
+----
+hibernate:
+    grails:
+        id:
+            sequence:
+                default_increment_size: 1
+----
+
+The same key works in the settings map of a `HibernateDatastore`:
+
+[source,groovy]
+----
+new HibernateDatastore(DatastoreUtils.createPropertyResolver([
+        'hibernate.grails.id.sequence.default_increment_size': 1
+]), Book)
+----
+
+[format="csv", options="header"]
+|===
+value,increment size and optimizer of a sequence mapping without `increment_size`
+not set, `50` with `pooled-lo`
+`1`, `1` without an optimizer: one `nextval` per id
+greater than `1`, that value with `pooled-lo`
+|===
+
+An `increment_size` in the mapping always wins over the setting, and an `optimizer` in the mapping is kept together
+with the configured increment size. Any other value than a whole number of at least `1` stops the start with a
+`MappingException`. The `native` generator (the default id mapping) is not affected.
 
 TIP: The above table covers the common configuration options. For all configuration refer to properties of the link:../api/org/grails/orm/hibernate/connections/HibernateConnectionSourceSettings.html[HibernateConnectionSourceSettings] class.

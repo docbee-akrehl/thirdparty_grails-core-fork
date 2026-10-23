@@ -7,6 +7,10 @@
         {
             "name": "hibernate.grails.proxy",
             "description": "Grails entity proxy behavior"
+        },
+        {
+            "name": "hibernate.grails.id.sequence",
+            "description": "Grails sequence identifier generation"
         }
     ],
     "properties": [
@@ -33,6 +37,11 @@
             "type": "java.lang.Boolean",
             "description": "Whether toString() on an uninitialized entity proxy returns entityName:id without initializing it. When false (the default, matching Grails 7 and earlier), toString() initializes the proxy and delegates to the domain class's own implementation.",
             "defaultValue": false
+        },
+        {
+            "name": "hibernate.grails.id.sequence.default_increment_size",
+            "type": "java.lang.Integer",
+            "description": "The increment size of an id generator 'sequence' mapping without increment_size. Not set, such a sequence reserves blocks of 50 ids with the pooled-lo optimizer. 1 draws one sequence value per id without an optimizer (GORM for Hibernate 5 behaviour); a larger value is used with pooled-lo. An increment_size in the mapping always wins."
         }
     ]
 }

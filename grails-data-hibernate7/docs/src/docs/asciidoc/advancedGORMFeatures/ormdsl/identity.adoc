@@ -36,6 +36,11 @@ class Book {
 ----
 <1> Uses a named database sequence for the `id` column.
 
+Without `increment_size` in `params`, a `sequence` id reserves blocks of 50 ids per `nextval` (`pooled-lo`), so the
+database sequence has to advance by 50. `params: [sequence_name: 'book_seq', increment_size: 1]` draws one value per
+id; the default for every such mapping is set with `hibernate.grails.id.sequence.default_increment_size` (see the
+configuration reference).
+
 Common generator values:
 
 [format="csv", options="header"]
