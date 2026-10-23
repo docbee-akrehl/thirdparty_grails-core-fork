@@ -166,6 +166,9 @@ class HibernateGormInstanceApi<D> extends GormInstanceApi<D> {
         validateable.skipValidation(true)
 
         try {
+            if (shouldInsert(arguments)) {
+                return performInsert(target, shouldFlush)
+            }
             return performUpsert(target, shouldFlush)
         } finally {
             // As GORM for Hibernate 5 (Grails 6) did: an instance saved without flush has been validated by
@@ -370,6 +373,16 @@ class HibernateGormInstanceApi<D> extends GormInstanceApi<D> {
         }
     }
 
+    /**
+     * {@code save(insert: true)} and {@code insert()}: schedules an SQL INSERT for the instance whatever its id, as
+     * GORM for Hibernate 5 did ({@code performInsert}: {@code session.save(target)}). An instance with an assigned id
+     * that already has a row is therefore rejected by the database (a {@code DataIntegrityViolationException} on the
+     * flush) instead of being merged into that row; an instance already managed by the session is left as it is.
+     */
+    protected D performInsert(final D target, final boolean shouldFlush) {
+        return performPersist(target, shouldFlush)
+    }
+
     protected D performMerge(final D target, final boolean flush) {
         hibernateTemplate.execute { Session session ->
             D merged
@@ -509,6 +522,10 @@ class HibernateGormInstanceApi<D> extends GormInstanceApi<D> {
             return ClassUtils.getBooleanFromMap(ARGUMENT_VALIDATE, arguments)
         }
         return true
+    }
+
+    private static boolean shouldInsert(Map arguments) {
+        ClassUtils.getBooleanFromMap(ARGUMENT_INSERT, arguments)
     }
 
     protected boolean shouldFlush(Map map) {
