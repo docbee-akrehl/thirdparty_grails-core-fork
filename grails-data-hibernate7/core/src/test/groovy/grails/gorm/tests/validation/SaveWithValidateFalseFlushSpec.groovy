@@ -30,8 +30,9 @@ import org.grails.orm.hibernate.cfg.Settings
 
 /**
  * An instance saved with {@code validate: false} must not be validated again when the session is
- * flushed later in the same transaction (Grails 6 behaviour), while an instance saved with validation
- * keeps being validated on flush.
+ * flushed later in the same transaction (Grails 6 behaviour). Since docbee.9 the same holds for a
+ * validated save without flush (validated once, by the save; see {@link SaveWithoutFlushValidatesOnceSpec}),
+ * while an instance saved with {@code flush: true} is validated again on a later flush after a change.
  *
  * <p>The entity uses a sequence id so that the insert is deferred to the flush, as it is with the
  * default PostgreSQL mapping. With an identity id the insert would run inside {@code save()} itself
@@ -107,11 +108,28 @@ class SaveWithValidateFalseFlushSpec extends Specification {
         ValidateFalseExample.withNewTransaction { ValidateFalseExample.findByText('invalid again') } != null
     }
 
-    void "save with validation still validates again on flush after the instance became invalid"() {
+    // Until docbee.8 this feature asserted that the flush validates the changed instance again and rejects
+    // it ("save with validation still validates again on flush after the instance became invalid"). Since
+    // docbee.9 a save without flush validates once, as GORM for Hibernate 5 (Grails 6) did.
+    void "save with validation without flush is not validated again on flush after the instance became invalid"() {
         when:
         ValidateFalseExample.withNewTransaction {
             ValidateFalseExample example = new ValidateFalseExample(text: 'valid').save()
             example.text = 'invalid'
+            ValidateFalseExample.withSession { session -> session.flush() }
+        }
+
+        then:
+        noExceptionThrown()
+        ValidateFalseExample.withNewTransaction { ValidateFalseExample.findByText('invalid') } != null
+    }
+
+    void "save with validation without flush of an instance that became invalid is rejected by the next save"() {
+        when:
+        ValidateFalseExample.withNewTransaction {
+            ValidateFalseExample example = new ValidateFalseExample(text: 'valid').save()
+            example.text = 'invalid'
+            example.save()
             ValidateFalseExample.withSession { session -> session.flush() }
         }
 

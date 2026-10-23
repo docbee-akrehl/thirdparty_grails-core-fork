@@ -22,6 +22,7 @@ import grails.gorm.annotation.Entity
 import grails.gorm.transactions.Rollback
 import grails.validation.ValidationException
 import org.grails.orm.hibernate.HibernateDatastore
+import org.springframework.dao.DataIntegrityViolationException
 import spock.lang.AutoCleanup
 import spock.lang.Shared
 import spock.lang.Specification
@@ -74,18 +75,35 @@ class SkipValidationSpec extends Specification {
         !isValid
     }
 
+    // docbee fork: as GORM for Hibernate 5 (Grails 6), a save() without flush validates the instance once and the
+    // flush does not validate it again (upstream validates again since grails-data-mapping#1155). This feature
+    // asserted the upstream behaviour ("author.hasErrors()" after the flush); it now asserts the Grails 6 one.
     @Rollback
-    void "calling validate with property list after save should validate again on explicit flush"() {
+    void "a change after save without flush is not validated again on explicit flush"() {
         // Save but don't flush, this causes the new author to have skipValidate = true
         Author author = new Author(name: 'Aaron').save(failOnError: true)
 
-        when: "validate is called again with a property list"
+        when: "the instance is changed and the session is flushed"
         author.name = "ThisNameIsTooLong"
         Author.withSession { session ->
             session.flush()
         }
 
+        then: "the flush does not validate it, the database rejects the too long value"
+        thrown(DataIntegrityViolationException)
+        !author.hasErrors()
+    }
+
+    @Rollback
+    void "a change after save without flush is validated by the next save"() {
+        Author author = new Author(name: 'Aaron').save(failOnError: true)
+
+        when:
+        author.name = "ThisNameIsTooLong"
+        author.save(failOnError: true)
+
         then:
+        thrown(ValidationException)
         author.hasErrors()
     }
 
