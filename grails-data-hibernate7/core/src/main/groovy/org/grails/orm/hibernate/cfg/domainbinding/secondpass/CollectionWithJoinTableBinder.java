@@ -18,6 +18,9 @@
  */
 package org.grails.orm.hibernate.cfg.domainbinding.secondpass;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import jakarta.annotation.Nonnull;
 
 import org.hibernate.mapping.Collection;
@@ -84,7 +87,7 @@ public class CollectionWithJoinTableBinder {
                             element, "long", property.resolveJoinTableForeignKeyColumnName(namingStrategy), true);
                 }
             }
-            if (collection instanceof Set && !sharesCollectionTable(property)) {
+            if (collection instanceof Set) {
                 bindElementColumnsNotNull(element);
             }
         }
@@ -94,10 +97,32 @@ public class CollectionWithJoinTableBinder {
     }
 
     /**
-     * Whether another to-many property of the owner is stored in the same table (two {@code hasMany} to the same class
-     * without {@code mappedBy}, issue 10811). Each of them writes its own nullable key column next to the shared element
-     * column, so the element column must not become part of a primary key, which would make each key column not null.
+     * Registers a unique key over the key column and the element columns of a set of entities whose join table is
+     * shared with another collection of the owner (two {@code hasMany} to the same class without {@code mappedBy},
+     * issue 10811). Must run after the collection key is bound and before {@link Collection#createAllKeys()}.
+     * <p>
+     * Each of these collections writes its own nullable key column next to the shared, not-null element column. With
+     * no key on the table, Hibernate's {@code Set.createPrimaryKey()} would make the key column of the first collection
+     * and the element the primary key, i.e. not null, so the rows of the other collection (NULL in that column) could
+     * not be stored. It skips the table as soon as it has a unique key, so one unique key per collection keeps each
+     * key column nullable while the element stays not null, which lets Hibernate delete only the row of a removed
+     * element ({@code BasicCollectionPersister} restricts a row delete by the not-null element columns only).
      */
+    public void bindSharedCollectionTableKey(@Nonnull HibernateToManyProperty property) {
+        Collection collection = property.getCollection();
+        if (!(collection instanceof Set) || collection.isOneToMany() || collection.getKey() == null ||
+                !sharesCollectionTable(property)) {
+            return;
+        }
+        List<Column> columns = new ArrayList<>(collection.getKey().getColumns());
+        collection.getElement().getSelectables().stream()
+                .filter(Column.class::isInstance)
+                .map(Column.class::cast)
+                .forEach(columns::add);
+        collection.getCollectionTable().createUniqueKey(columns, collection.getBuildingContext());
+    }
+
+    /** Whether another to-many property of the owner is stored in the same table (issue 10811). */
     private boolean sharesCollectionTable(HibernateToManyProperty property) {
         Table table = property.getCollection().getCollectionTable();
         return property.getHibernateOwner().getPersistentPropertiesToBind().stream()

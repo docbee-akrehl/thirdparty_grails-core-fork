@@ -78,6 +78,71 @@ class UnidirectionalJoinTableCollectionsPostgresSpec extends UnidirectionalJoinT
         reload(UJTOneCollection, owner.id).tags*.name == ['b']
     }
 
+    @Rollback
+    void "the generated join table shared by two sets has a unique key per collection and no primary key"() {
+        when:
+        String table = joinTable(UJTSharedJoinTable, 'tags')
+        String element = elementColumns(UJTSharedJoinTable, 'tags').first()
+        List<Object[]> rows = hibernateDatastore.sessionFactory.currentSession.createNativeQuery(
+                "select tc.constraint_name, tc.constraint_type, kcu.column_name " +
+                        "from information_schema.table_constraints tc " +
+                        "join information_schema.key_column_usage kcu on kcu.constraint_name = tc.constraint_name " +
+                        "and kcu.table_name = tc.table_name " +
+                        "where tc.table_name = :table and tc.constraint_type in ('PRIMARY KEY', 'UNIQUE')",
+                Object[]).setParameter('table', table).list()
+        Map<String, List<Object[]>> byConstraint = rows.groupBy { Object[] row -> row[0] as String }
+        List<Map<String, Object>> columns = hibernateDatastore.sessionFactory.currentSession.createNativeQuery(
+                "select column_name, is_nullable from information_schema.columns where table_name = :table",
+                Object[]).setParameter('table', table).list()
+                .collect { Object[] row -> [name: row[0], nullable: row[1]] as Map<String, Object> }
+
+        then:
+        rows.every { Object[] row -> row[1] == 'UNIQUE' }
+        byConstraint.values().collect { List<Object[]> key -> key.collect { it[2] as String } as Set } as Set == [
+                [keyColumn(UJTSharedJoinTable, 'tags'), element] as Set,
+                [keyColumn(UJTSharedJoinTable, 'otherTags'), element] as Set
+        ] as Set
+        columns.findAll { it.nullable == 'NO' }*.name == [element]
+    }
+
+    @Rollback
+    void "an element removed from a collection in a shared join table with the Hibernate 5 shape deletes only its join row"() {
+        given: 'the shared join table as GORM for Hibernate 5 created it: three nullable columns, no primary or unique key'
+        String table = joinTable(UJTSharedJoinTable, 'tags')
+        List<String> constraints = hibernateDatastore.sessionFactory.currentSession.createNativeQuery(
+                "select constraint_name from information_schema.table_constraints where table_name = :table " +
+                        "and constraint_type in ('PRIMARY KEY', 'UNIQUE')", String)
+                .setParameter('table', table).list()
+        constraints.each { String name ->
+            execute("alter table ${table} drop constraint ${name}")
+        }
+        List<String> columns = hibernateDatastore.sessionFactory.currentSession.createNativeQuery(
+                "select column_name from information_schema.columns where table_name = :table", String)
+                .setParameter('table', table).list()
+        columns.each { String column ->
+            execute("alter table ${table} alter column ${column} drop not null")
+        }
+
+        and:
+        def first = new UJTTag(name: 'a').save(flush: true, failOnError: true)
+        def second = new UJTTag(name: 'b').save(flush: true, failOnError: true)
+        def owner = new UJTSharedJoinTable(name: 'shared').addToTags(first).addToTags(second).addToOtherTags(first)
+                .save(flush: true, failOnError: true)
+
+        when:
+        def loaded = reload(UJTSharedJoinTable, owner.id)
+        loaded.removeFromTags(loaded.tags.find { it.name == 'a' })
+        loaded.save(flush: true, failOnError: true)
+        loaded = reload(UJTSharedJoinTable, owner.id)
+
+        then: 'the database rolls the schema change back with the test transaction'
+        constraints.size() == 2
+        columns.size() == 3
+        count(table) == 2
+        loaded.tags*.name == ['b']
+        loaded.otherTags*.name == ['a']
+    }
+
     /** Runs a DDL statement built from the mapping and the database catalog, never from input. */
     private void execute(GString sql) {
         hibernateDatastore.sessionFactory.currentSession.createNativeMutationQuery(sql.toString()).executeUpdate()

@@ -72,7 +72,7 @@ public class CollectionSecondPassBinder {
     }
 
     public void bindCollectionSecondPass(@Nonnull HibernateToManyProperty property) {
-
+        boolean boundWithJoinTable = false;
         if (property instanceof HibernateEmbeddedCollectionProperty embeddedCollectionProperty &&
                 componentBinder != null) {
             Component component = componentBinder.bindEmbeddedCollectionComponent(embeddedCollectionProperty);
@@ -85,6 +85,7 @@ public class CollectionSecondPassBinder {
                 bidirectionalMapElementBinder.bind(entityProperty);
             } else if (entityProperty.isOneToMany() && entityProperty.isUnidirectionalOneToMany()) {
                 unidirectionalOneToManyBinder.bind((HibernateOneToManyProperty) entityProperty);
+                boundWithJoinTable = !entityProperty.shouldBindWithForeignKey();
             }
             hibernateToManyEntityMultiTenantFilterBinder.bind(entityProperty);
         } else if (property instanceof HibernateToManyCollectionProperty collectionProperty &&
@@ -93,6 +94,9 @@ public class CollectionSecondPassBinder {
         }
 
         collectionKeyColumnUpdater.bind(property);
+        if (boundWithJoinTable) {
+            collectionWithJoinTableBinder.bindSharedCollectionTableKey(property);
+        }
         Collection collection = property.getCollection();
         collection.setSorted(property.isSorted());
         collection.setCacheConcurrencyStrategy(property.getCacheUsage());

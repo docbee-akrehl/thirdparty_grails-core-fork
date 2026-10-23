@@ -20,7 +20,6 @@ package grails.gorm.tests.hasmany
 
 import org.springframework.transaction.PlatformTransactionManager
 import spock.lang.AutoCleanup
-import spock.lang.PendingFeature
 import spock.lang.Shared
 import spock.lang.Specification
 
@@ -29,6 +28,7 @@ import grails.gorm.transactions.Rollback
 import org.grails.datastore.mapping.core.DatastoreUtils
 import org.grails.orm.hibernate.HibernateDatastore
 import org.grails.orm.hibernate.cfg.Settings
+import org.hibernate.mapping.Table
 import org.hibernate.metamodel.mapping.SelectableMapping
 import org.hibernate.persister.collection.AbstractCollectionPersister
 
@@ -39,7 +39,9 @@ import org.hibernate.persister.collection.AbstractCollectionPersister
  * <p>
  * The element column of the join table of a set is not null: Hibernate deletes the row of a removed element by its
  * non-nullable element columns only, so with a nullable element column {@code removeFrom} deleted every row of the
- * owner. The same holds for collections of basic values ({@code hasMany = [ids: Long]}).
+ * owner. The same holds for collections of basic values ({@code hasMany = [ids: Long]}) and for two collections of the
+ * same class sharing one join table (issue 10811): there each collection gets a unique key over its own nullable key
+ * column and the element instead of a primary key, which would make the key column of one collection not null.
  */
 abstract class UnidirectionalJoinTableCollectionsSpec extends Specification {
 
@@ -188,7 +190,8 @@ abstract class UnidirectionalJoinTableCollectionsSpec extends Specification {
         expect: 'issue 10811: each collection writes its own nullable key column next to the shared element column'
         joinTable(UJTSharedJoinTable, 'otherTags') == table
         count(table) == 3
-        elementColumnsNullable(UJTSharedJoinTable, 'tags') == [true]
+        elementColumnsNullable(UJTSharedJoinTable, 'tags') == [false]
+        elementColumnsNullable(UJTSharedJoinTable, 'otherTags') == [false]
 
         when:
         def loaded = reload(UJTSharedJoinTable, owner.id)
@@ -202,23 +205,54 @@ abstract class UnidirectionalJoinTableCollectionsSpec extends Specification {
     }
 
     @Rollback
-    @PendingFeature(reason = 'open: in a join table shared by two collections (issue 10811) the element column stays ' +
-            'nullable - a not-null element column would make Hibernate create a primary key over the key column of ' +
-            'one collection and the element column, so the rows of the other collection could not be stored')
     void "an element removed from a collection in a shared join table deletes only its join row"() {
         given:
         def first = new UJTTag(name: 'a').save(flush: true, failOnError: true)
         def second = new UJTTag(name: 'b').save(flush: true, failOnError: true)
+        def third = new UJTTag(name: 'c').save(flush: true, failOnError: true)
         def owner = new UJTSharedJoinTable(name: 'shared').addToTags(first).addToTags(second)
-                .save(flush: true, failOnError: true)
+                .addToOtherTags(first).addToOtherTags(third).save(flush: true, failOnError: true)
+        String table = joinTable(UJTSharedJoinTable, 'tags')
 
         when:
         def loaded = reload(UJTSharedJoinTable, owner.id)
         loaded.removeFromTags(loaded.tags.find { it.name == 'a' })
         loaded.save(flush: true, failOnError: true)
 
+        then: 'the other rows of the collection and all rows of the other collection stay'
+        count(table) == 3
+
+        when:
+        loaded = reload(UJTSharedJoinTable, owner.id)
+
         then:
-        reload(UJTSharedJoinTable, owner.id).tags*.name == ['b']
+        loaded.tags*.name == ['b']
+        loaded.otherTags*.name.sort() == ['a', 'c']
+
+        when:
+        loaded.otherTags.remove(loaded.otherTags.find { it.name == 'c' })
+        loaded.save(flush: true, failOnError: true)
+        loaded = reload(UJTSharedJoinTable, owner.id)
+
+        then:
+        count(table) == 2
+        loaded.tags*.name == ['b']
+        loaded.otherTags*.name == ['a']
+    }
+
+    void "a join table shared by two sets gets a unique key per collection instead of a primary key"() {
+        when:
+        Table table = hibernateDatastore.metadata
+                .getCollectionBinding(UJTSharedJoinTable.name + '.tags').collectionTable
+        String element = elementColumns(UJTSharedJoinTable, 'tags').first()
+
+        then: 'a primary key would make the key column of each collection not null'
+        hibernateDatastore.metadata.getCollectionBinding(UJTSharedJoinTable.name + '.otherTags').collectionTable.is(table)
+        !table.hasPrimaryKey()
+        table.uniqueKeys.values().collect { it.columns*.name as Set } as Set == [
+                [keyColumn(UJTSharedJoinTable, 'tags'), element] as Set,
+                [keyColumn(UJTSharedJoinTable, 'otherTags'), element] as Set
+        ] as Set
     }
 
     @Rollback
@@ -300,6 +334,15 @@ abstract class UnidirectionalJoinTableCollectionsSpec extends Specification {
         (hibernateDatastore.sessionFactory.mappingMetamodel
                 .getCollectionDescriptor(owner.name + '.' + property) as AbstractCollectionPersister)
                 .elementColumnNames as List<String>
+    }
+
+    /** The key column of the collection in its join table. */
+    protected String keyColumn(Class<?> owner, String property) {
+        List<String> columns = (hibernateDatastore.sessionFactory.mappingMetamodel
+                .getCollectionDescriptor(owner.name + '.' + property) as AbstractCollectionPersister)
+                .keyColumnNames as List<String>
+        assert columns.size() == 1
+        columns.first()
     }
 
     /** Whether each element column of the collection is nullable in the Hibernate mapping. */
