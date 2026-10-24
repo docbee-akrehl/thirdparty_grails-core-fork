@@ -645,7 +645,8 @@ public class HibernateCriteriaBuilder extends GroovyObjectSupport implements Bui
         if (fetchMode.equals(FetchMode.SELECT)) {
             hibernateQuery.getDetachedCriteria().select(associationPath);
         } else {
-            hibernateQuery.getDetachedCriteria().join(associationPath);
+            // a fetch join, as Hibernate 5's Criteria#setFetchMode did: the query loads the association
+            hibernateQuery.join(associationPath);
         }
     }
 

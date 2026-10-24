@@ -17,6 +17,7 @@ package org.grails.orm.hibernate.query;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -25,6 +26,7 @@ import jakarta.persistence.criteria.AbstractQuery;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.FetchParent;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Nulls;
@@ -138,14 +140,22 @@ public class JpaCriteriaQueryCreator<T> {
             return;
         }
         Map<String, ?> joinTypes = detachedCriteria.getJoinTypes();
+        // a nested path fetches along the fetches of its parents, e.g. rack.books from the fetch of rack
+        Map<String, FetchParent<?, ?>> fetchByPath = new HashMap<>();
         for (String fetchPath : hibernateQuery.getFetchJoinPaths()) {
-            if (fetchPath == null || fetchPath.indexOf('.') >= 0) {
+            if (fetchPath == null) {
                 continue;
             }
-            Object configured = (joinTypes != null) ? joinTypes.get(fetchPath) : null;
-            JoinType joinType = (configured instanceof JoinType jt) ? jt : JoinType.LEFT;
+            FetchParent<?, ?> parent = root;
+            String prefix = null;
             try {
-                root.fetch(fetchPath, joinType);
+                for (String segment : fetchPath.split("\\.")) {
+                    prefix = prefix == null ? segment : prefix + '.' + segment;
+                    FetchParent<?, ?> current = parent;
+                    Object configured = (joinTypes != null) ? joinTypes.get(prefix) : null;
+                    JoinType joinType = (configured instanceof JoinType jt) ? jt : JoinType.LEFT;
+                    parent = fetchByPath.computeIfAbsent(prefix, key -> current.fetch(segment, joinType));
+                }
             }
             catch (IllegalArgumentException ignored) {
                 // Not a fetchable association on this root; the plain join handling remains in place.
