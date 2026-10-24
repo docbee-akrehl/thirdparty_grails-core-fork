@@ -86,6 +86,24 @@ class FetchModeJoinSpec extends Specification {
     }
 
     @Rollback
+    void "fetchMode JOIN is a left join and keeps the rows without the association"() {
+        given:
+        seed()
+        new FetchJoinDeal(name: 'deal without buyer').save(flush: true, failOnError: true)
+        FetchJoinDeal.withSession { it.clear() }
+
+        when:
+        List<FetchJoinDeal> deals = FetchJoinDeal.createCriteria().list {
+            fetchMode('buyer', FetchMode.JOIN)
+            fetchMode('buyer.maker', FetchMode.JOIN)
+        }
+
+        then:
+        deals*.name.sort() == ['deal 1', 'deal 2', 'deal without buyer']
+        deals.find { it.name == 'deal without buyer' }.buyer == null
+    }
+
+    @Rollback
     void "fetchMode JOIN on a nested path loads it along its parent's fetch"() {
         given:
         seed()
@@ -227,6 +245,11 @@ class FetchJoinDeal {
     String name
     FetchJoinCard buyer
     FetchJoinCard seller
+
+    static constraints = {
+        buyer nullable: true
+        seller nullable: true
+    }
 }
 
 @Entity
