@@ -27,6 +27,7 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.FetchParent;
+import jakarta.persistence.criteria.From;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Nulls;
@@ -110,9 +111,9 @@ public class JpaCriteriaQueryCreator<T> {
         context = JpaQueryContext.forSubquery(parentContext, aliases, root);
         registerDetachedJoins(context);
         discoverAliases(detachedCriteria.getCriteria(), context);
-        joinAliases(aliases, context, cq, root);
-
+        // before the aliases: an alias of a fetched path reuses the fetch instead of joining the path again
         applyEagerFetchJoins(root, projectionList);
+        joinAliases(aliases, context, cq, root);
 
         var handlerContext = new JpaCriteriaHandlerContext(criteriaBuilder, conversionService, cq, root, context, entity);
         new JpaProjectionAdapter(criteriaBuilder, context, entity, handlerContext).adapt(projections, (AbstractQuery<?>) cq);
@@ -155,6 +156,10 @@ public class JpaCriteriaQueryCreator<T> {
                     Object configured = (joinTypes != null) ? joinTypes.get(prefix) : null;
                     JoinType joinType = (configured instanceof JoinType jt) ? jt : JoinType.LEFT;
                     parent = fetchByPath.computeIfAbsent(prefix, key -> current.fetch(segment, joinType));
+                    // the fetch is the join of its association path, so a reference to the path reuses it
+                    if (parent instanceof From<?, ?> from && context.getJoinTracker().getLocalJoin(prefix) == null) {
+                        context.addAssociationPathFrom(prefix, from);
+                    }
                 }
             }
             catch (IllegalArgumentException ignored) {

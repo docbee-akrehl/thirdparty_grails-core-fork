@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Fetch;
 import jakarta.persistence.criteria.From;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.metamodel.Attribute;
@@ -175,7 +176,7 @@ public class ExpressionResolver {
         for (int i = 0; i < segments.length; i++) {
             associationPath = associationPath == null ? segments[i] : associationPath + '.' + segments[i];
             boolean last = i == segments.length - 1;
-            From<?, ?> existing = last ? null : joinOfAssociationPath(associationPath, alias);
+            From<?, ?> existing = last ? fetchOfAssociationPath(associationPath, def) : joinOfAssociationPath(associationPath, alias);
             if (existing != null) {
                 from = existing;
             } else {
@@ -196,6 +197,19 @@ public class ExpressionResolver {
         associationPaths.put(alias, associationPath);
         registerAssociationPath(associationPath, from);
         return from;
+    }
+
+    /**
+     * Returns the fetch of the association path made for {@code fetchMode(path, FetchMode.JOIN)}, which an alias of
+     * the path with the same join type and no with-clause reuses instead of joining the path a second time: a fetch
+     * cannot take a with-clause, and a different join type would change the rows the alias restricts the query to.
+     */
+    private From<?, ?> fetchOfAssociationPath(String associationPath, HibernateAlias def) {
+        From<?, ?> existing = joinTracker.getLocalJoin(associationPath);
+        if (existing instanceof Fetch<?, ?> fetch && def.withClause() == null && fetch.getJoinType() == def.joinType()) {
+            return existing;
+        }
+        return null;
     }
 
     /**
